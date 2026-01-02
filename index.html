@@ -93,7 +93,7 @@ function draw() {
   for(let i=-Math.floor(numLines/2); i<=Math.floor(numLines/2); i++){
     const t = i / Math.floor(numLines/2); 
     const px = xX0 + (xX1 - xX0)*(0.5 + t/2); 
-    const py = xY0 + (yY1 - xY0)*(0.5 + t/2);
+    const py = xY0 + (xY1 - xY0)*(0.5 + t/2); // исправлено на xY1
     ctx.beginPath();
     ctx.moveTo(px, py - vertLineLength/2);
     ctx.lineTo(px, py + vertLineLength/2);
