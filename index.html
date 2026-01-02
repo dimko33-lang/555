@@ -25,8 +25,14 @@ window.addEventListener("resize", resize);
 resize();
 
 const numLines = 7;   
-const spacing = 60;    // 1 световая секунда = 60 пикселей
 const vertLineLength = 1000; // длина вертикальных линий и крестика
+
+// РАСЧЕТ РАССТОЯНИЯ МЕЖДУ ВЕРТИКАЛЬНЫМИ ЛИНИЯМИ
+// При горизонтальной оси (angle=0):
+// - Длина оси x′ = vertLineLength = 1000px
+// - Количество интервалов = numLines - 1 = 6
+// - Расстояние между линиями = 1000 / 6 ≈ 166.67px
+const lineSpacing = vertLineLength / (numLines - 1); // 166.67px
 
 // drag
 canvas.addEventListener("pointerdown", e => {
@@ -79,9 +85,9 @@ function draw() {
   ctx.lineTo(ctX1, ctY1);
   ctx.stroke();
 
-  // x′ (супер тонкая)
+  // x′ (тонкая)
   ctx.strokeStyle = "#fa0";
-  ctx.lineWidth = 1; /* ЕЩЁ ТОНЬШЕ: было 1.5 */
+  ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(xX0, xY0);
   ctx.lineTo(xX1, xY1);
@@ -90,44 +96,56 @@ function draw() {
   // вертикальные линии, подвешенные к x′
   ctx.strokeStyle = "#880";
   ctx.lineWidth = 1;
+  
+  // Количество отметок в каждую сторону от центра линии
+  const marksPerSide = Math.floor(vertLineLength / 2 / lineSpacing);
+  
   for(let i=-Math.floor(numLines/2); i<=Math.floor(numLines/2); i++){
     const t = i / Math.floor(numLines/2); 
     const px = xX0 + (xX1 - xX0)*(0.5 + t/2); 
     const py = xY0 + (xY1 - xY0)*(0.5 + t/2);
     
+    // Вектор направления вертикальной линии (перпендикулярно x′)
+    const vertDx = -sinA;
+    const vertDy = cosA;
+    
     // Рисуем вертикальную линию
     ctx.beginPath();
-    ctx.moveTo(px, py - vertLineLength/2);
-    ctx.lineTo(px, py + vertLineLength/2);
+    ctx.moveTo(px - vertDx * vertLineLength/2, py - vertDy * vertLineLength/2);
+    ctx.lineTo(px + vertDx * vertLineLength/2, py + vertDy * vertLineLength/2);
     ctx.stroke();
     
-    // ОТМЕТКИ НА ВЕРТИКАЛЬНЫХ ЛИНИЯХ (каждые 1 световая секунда)
-    ctx.strokeStyle = "#aa0"; // жёлто-оранжевый для отметок
+    // ОТМЕТКИ НА ВЕРТИКАЛЬНОЙ ЛИНИИ через lineSpacing (166.67px)
+    ctx.strokeStyle = "#aa0";
     ctx.lineWidth = 0.8;
+    const markLength = 10;
     
-    // Рассчитываем шаг отметок (равный spacing = 60px)
-    const markLength = 10; // длина черточки
-    const marksPerSide = Math.floor(vertLineLength / 2 / spacing);
+    // Вектор для отметок (перпендикулярно вертикальной линии = параллельно x′)
+    const markDx = cosA;
+    const markDy = sinA;
     
-    // Отмечаем вверх от центра
+    // Отметки от центра линии в обе стороны
     for(let j = 1; j <= marksPerSide; j++) {
-      const markY = py - j * spacing; // 1 световая секунда вверх
+      // Вверх по вертикальной линии
+      const markYupX = px - vertDx * j * lineSpacing;
+      const markYupY = py - vertDy * j * lineSpacing;
+      
       ctx.beginPath();
-      ctx.moveTo(px - markLength/2, markY);
-      ctx.lineTo(px + markLength/2, markY);
+      ctx.moveTo(markYupX - markDx * markLength/2, markYupY - markDy * markLength/2);
+      ctx.lineTo(markYupX + markDx * markLength/2, markYupY + markDy * markLength/2);
+      ctx.stroke();
+      
+      // Вниз по вертикальной линии
+      const markYdownX = px + vertDx * j * lineSpacing;
+      const markYdownY = py + vertDy * j * lineSpacing;
+      
+      ctx.beginPath();
+      ctx.moveTo(markYdownX - markDx * markLength/2, markYdownY - markDy * markLength/2);
+      ctx.lineTo(markYdownX + markDx * markLength/2, markYdownY + markDy * markLength/2);
       ctx.stroke();
     }
     
-    // Отмечаем вниз от центра
-    for(let j = 1; j <= marksPerSide; j++) {
-      const markY = py + j * spacing; // 1 световая секунда вниз
-      ctx.beginPath();
-      ctx.moveTo(px - markLength/2, markY);
-      ctx.lineTo(px + markLength/2, markY);
-      ctx.stroke();
-    }
-    
-    // Возвращаем цвет для линий
+    // Возвращаем цвет для следующих линий
     ctx.strokeStyle = "#880";
   }
 
