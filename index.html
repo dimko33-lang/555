@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>СТО: Преобразования Лоренца</title>
+    <style>
+        body { margin:0; background:#111; overflow:hidden; }
+        canvas { display:block; }
+    </style>
+</head>
+<body>
+    <canvas id="c"></canvas>
+    <script>
+        const canvas = document.getElementById("c");
+        const ctx = canvas.getContext("2d");
+        
+        // Простейшая версия вашей визуализации
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.onresize = resize;
+        resize();
+        
+        let angle = 0;
+        let dragging = false;
+        let lastX = 0;
+        
+        // Управление
+        canvas.onpointerdown = e => { dragging = true; lastX = e.clientX; };
+        canvas.onpointermove = e => {
+            if(dragging) { angle -= (e.clientX - lastX) * 0.01; lastX = e.clientX; }
+        };
+        canvas.onpointerup = () => dragging = false;
+        
+        // Отрисовка
+        function draw() {
+            ctx.clearRect(0,0,canvas.width,canvas.height);
+            const cx = canvas.width/2, cy = canvas.height/2;
+            const cos = Math.cos(angle), sin = Math.sin(angle);
+            
+            // Лабораторные оси
+            ctx.strokeStyle = "#888"; ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.moveTo(0,cy); ctx.lineTo(canvas.width,cy); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(cx,0); ctx.lineTo(cx,canvas.height); ctx.stroke();
+            
+            // Движущиеся оси
+            const len = 300;
+            ctx.strokeStyle = "#0ff"; ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(cx - sin*len, cy - cos*len);
+            ctx.lineTo(cx + sin*len, cy + cos*len);
+            ctx.stroke();
+            
+            ctx.strokeStyle = "#fa0"; ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(cx - cos*len, cy + sin*len);
+            ctx.lineTo(cx + cos*len, cy - sin*len);
+            ctx.stroke();
+            
+            requestAnimationFrame(draw);
+        }
+        draw();
+    </script>
+</body>
+  </html>
