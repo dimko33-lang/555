@@ -1,39 +1,112 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>СТО: Преобразования Лоренца</title>
-    <style>
-        body { margin:0; background:#111; overflow:hidden; }
-        canvas { display:block; }
-    </style>
-</head>
+<meta charset="UTF-8">
+<title>СТО: крест с тонкой x′</title>
+<style>
+  body { margin:0; background:#111; overflow:hidden; touch-action: none; }
+  canvas { display:block; }
+</style>
 <body>
-    <canvas id="c"></canvas>
-    <script>
-        const canvas = document.getElementById("c");
-        const ctx = canvas.getContext("2d");
-        
-        // Простейшая версия вашей визуализации
-        function resize() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        }
-        window.onresize = resize;
-        resize();
-        
-        let angle = 0;
-        let dragging = false;
-        let lastX = 0;
-        
-        // Управление
-        canvas.onpointerdown = e => { dragging = true; lastX = e.clientX; };
-        canvas.onpointermove = e => {
-            if(dragging) { angle -= (e.clientX - lastX) * 0.01; lastX = e.clientX; }
-        };
-        canvas.onpointerup = () => dragging = false;
-        
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+
+let angle = 0; // угол вращения крестика
+let dragging = false;
+let lastX = 0;
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener("resize", resize);
+resize();
+
+const numLines = 7;   
+const spacing = 60;    
+const vertLineLength = 1000; // длина вертикальных линий и крестика
+
+// drag
+canvas.addEventListener("pointerdown", e => {
+  dragging = true;
+  lastX = e.clientX;
+});
+canvas.addEventListener("pointermove", e => {
+  if(dragging){
+    const dx = e.clientX - lastX;
+    angle -= dx * 0.01; // реверс вращения
+    lastX = e.clientX;
+  }
+});
+canvas.addEventListener("pointerup", e => dragging = false);
+canvas.addEventListener("pointerleave", e => dragging = false);
+
+function draw() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+
+  const cosA = Math.cos(angle);
+  const sinA = Math.sin(angle);
+
+  // --- горизонтальная ось ---
+  ctx.strokeStyle = "#888"; // серая
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(0, cy);
+  ctx.lineTo(canvas.width, cy);
+  ctx.stroke();
+
+  // крест ct′ + x′ (в центре)
+  const ctX0 = cx - sinA*vertLineLength/2;
+  const ctY0 = cy - cosA*vertLineLength/2;
+  const ctX1 = cx + sinA*vertLineLength/2;
+  const ctY1 = cy + cosA*vertLineLength/2;
+
+  const xX0 = cx - cosA*vertLineLength/2;
+  const xY0 = cy + sinA*vertLineLength/2;
+  const xX1 = cx + cosA*vertLineLength/2;
+  const xY1 = cy - sinA*vertLineLength/2;
+
+  // ct′
+  ctx.strokeStyle = "#0ff";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(ctX0, ctY0);
+  ctx.lineTo(ctX1, ctY1);
+  ctx.stroke();
+
+  // x′ (тонкая)
+  ctx.strokeStyle = "#fa0";
+  ctx.lineWidth = 2; // сделали тоньше
+  ctx.beginPath();
+  ctx.moveTo(xX0, xY0);
+  ctx.lineTo(xX1, xY1);
+  ctx.stroke();
+
+  // вертикальные линии, подвешенные к x′
+  ctx.strokeStyle = "#880";
+  ctx.lineWidth = 1;
+  for(let i=-Math.floor(numLines/2); i<=Math.floor(numLines/2); i++){
+    const t = i / Math.floor(numLines/2); 
+    const px = xX0 + (xX1 - xX0)*(0.5 + t/2); 
+    const py = xY0 + (yY1 - xY0)*(0.5 + t/2);
+    ctx.beginPath();
+    ctx.moveTo(px, py - vertLineLength/2);
+    ctx.lineTo(px, py + vertLineLength/2);
+    ctx.stroke();
+  }
+
+  requestAnimationFrame(draw);
+}
+
+draw();
+</script>
+</body>
+</html>
         // Отрисовка
         function draw() {
             ctx.clearRect(0,0,canvas.width,canvas.height);
