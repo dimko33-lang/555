@@ -1,4 +1,4 @@
-    <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
@@ -70,12 +70,13 @@ const ctx = canvas.getContext("2d");
 let angle = 0;
 let dragging = false;
 let lastX = 0;
-let scale = 1.0; // Масштаб
-let offsetX = 0, offsetY = 0; // Смещение
+let scale = 1.0;
+let offsetX = 0, offsetY = 0;
 
 const numLines = 7;   
 const vertLineLength = 1000;
 const lineSpacing = vertLineLength / (numLines - 1); // 166.67px
+const smallMarkSpacing = lineSpacing / 10; // 0.1 секунды
 
 // drag
 canvas.addEventListener("pointerdown", e => {
@@ -106,19 +107,16 @@ canvas.addEventListener("wheel", e => {
   const worldY = (mouseY - offsetY) / scale;
   
   if (e.deltaY < 0) {
-    // Увеличение
     scale *= zoomFactor;
   } else {
-    // Уменьшение
     scale /= zoomFactor;
   }
   
-  // Ограничиваем масштаб
   scale = Math.max(0.1, Math.min(5, scale));
   
-  // Корректируем смещение для сохранения позиции мыши
-  offsetX = mouseX - worldX * scale;
-  offsetY = mouseY - worldY * scale;
+  // Центрируем на кресте после масштабирования
+  offsetX = canvas.width/2;
+  offsetY = canvas.height/2;
   
   updateScaleInfo();
 });
@@ -136,8 +134,8 @@ document.getElementById('zoomOut').addEventListener('click', () => {
 
 document.getElementById('zoomReset').addEventListener('click', () => {
   scale = 1.0;
-  offsetX = 0;
-  offsetY = 0;
+  offsetX = canvas.width/2;
+  offsetY = canvas.height/2;
   updateScaleInfo();
 });
 
@@ -159,6 +157,8 @@ function updateScaleInfo() {
 function resize() {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
+  offsetX = canvas.width/2; // Центрируем крест
+  offsetY = canvas.height/2;
 }
 window.addEventListener("resize", resize);
 resize();
@@ -171,7 +171,7 @@ function toScreen(x, y) {
   };
 }
 
-// Функция рисования линии с учетом масштаба
+// Функция рисования линии
 function drawLine(x1, y1, x2, y2, color, width) {
   const p1 = toScreen(x1, y1);
   const p2 = toScreen(x2, y2);
@@ -221,15 +221,15 @@ function draw() {
   const xX1 = cx + cosA*vertLineLength/2;
   const xY1 = cy - sinA*vertLineLength/2;
 
-  // ct′ (тонкая голубая)
-  drawLine(ctX0, ctY0, ctX1, ctY1, "#0ff", 1.5);
+  // ct′ (ОЧЕНЬ тонкая голубая)
+  drawLine(ctX0, ctY0, ctX1, ctY1, "#0ff", 1); // ЕЩЁ ТОНЬШЕ: было 1.5
 
   // x′ (тонкая оранжевая)
   drawLine(xX0, xY0, xX1, xY1, "#fa0", 1);
 
   // ОТМЕТКИ НА ГОЛУБОЙ ОСИ (ct′) через lineSpacing
-  const ctDirX = (ctX1 - ctX0);
-  const ctDirY = (ctY1 - ctY0);
+  const ctDirX = ctX1 - ctX0;
+  const ctDirY = ctY1 - ctY0;
   const ctLength = Math.sqrt(ctDirX*ctDirX + ctDirY*ctDirY);
   const ctUnitX = ctDirX / ctLength;
   const ctUnitY = ctDirY / ctLength;
@@ -239,18 +239,32 @@ function draw() {
   const ctMarks = Math.floor(ctLength / lineSpacing / 2);
   for(let j = 1; j <= ctMarks; j++) {
     // От центра в обе стороны
-    const markX1 = cx + ctUnitX * j * lineSpacing;
-    const markY1 = cy + ctUnitY * j * lineSpacing;
-    drawMark(markX1, markY1, ctPerpX, ctPerpY, 10, "#088", 0.8);
+    const markX1 = j * lineSpacing;
+    const markY1 = 0;
+    drawMark(markX1 * ctUnitX, markY1 * ctUnitY, ctPerpX, ctPerpY, 12, "#088", 0.8);
     
-    const markX2 = cx - ctUnitX * j * lineSpacing;
-    const markY2 = cy - ctUnitY * j * lineSpacing;
-    drawMark(markX2, markY2, ctPerpX, ctPerpY, 10, "#088", 0.8);
+    const markX2 = -j * lineSpacing;
+    const markY2 = 0;
+    drawMark(markX2 * ctUnitX, markY2 * ctUnitY, ctPerpX, ctPerpY, 12, "#088", 0.8);
+  }
+
+  // МЕЛКИЕ ОТМЕТКИ НА ГОЛУБОЙ ОСИ (0.1 секунды)
+  const ctSmallMarks = Math.floor(ctLength / smallMarkSpacing / 2);
+  for(let j = 1; j <= ctSmallMarks; j++) {
+    // Пропускаем каждую 10-ю отметку
+    if (j % 10 === 0) continue;
+    
+    const markX1 = j * smallMarkSpacing;
+    const markY1 = 0;
+    drawMark(markX1 * ctUnitX, markY1 * ctUnitY, ctPerpX, ctPerpY, 6, "#066", 0.4);
+    
+    const markX2 = -j * smallMarkSpacing;
+    const markY2 = 0;
+    drawMark(markX2 * ctUnitX, markY2 * ctUnitY, ctPerpX, ctPerpY, 6, "#066", 0.4);
   }
 
   // ВЕРТИКАЛЬНЫЕ ЛИНИИ
   const vertMarks = Math.floor(vertLineLength / 2 / lineSpacing);
-  const smallMarkSpacing = lineSpacing / 10; // 0.1 секунды
   
   for(let i=-Math.floor(numLines/2); i<=Math.floor(numLines/2); i++){
     const t = i / Math.floor(numLines/2); 
@@ -288,21 +302,28 @@ function draw() {
       drawMark(downX, downY, markDx, markDy, 10, "#aa0", 0.8);
     }
     
-    // МЕЛКИЕ ОТМЕТКИ (0.1 секунды) - больше отметок
+    // МЕЛКИЕ ОТМЕТКИ (0.1 секунды) - УВЕЛИЧИЛ КОЛИЧЕСТВО
     const smallMarks = Math.floor(vertLineLength / 2 / smallMarkSpacing);
     for(let j = 1; j <= smallMarks; j++) {
-      // Пропускаем каждую 10-ю отметку (там уже большая отметка)
+      // Пропускаем каждую 10-ю отметку
       if (j % 10 === 0) continue;
       
       const upX = px - vertDx * j * smallMarkSpacing;
       const upY = py - vertDy * j * smallMarkSpacing;
-      drawMark(upX, upY, markDx, markDy, 4, "#663", 0.4);
+      drawMark(upX, upY, markDx, markDy, 6, "#663", 0.5); // Увеличил толщину и длину
       
       const downX = px + vertDx * j * smallMarkSpacing;
       const downY = py + vertDy * j * smallMarkSpacing;
-      drawMark(downX, downY, markDx, markDy, 4, "#663", 0.4);
+      drawMark(downX, downY, markDx, markDy, 6, "#663", 0.5);
     }
   }
+
+  // Рисуем центр креста маленьким кружком для наглядности
+  const center = toScreen(0, 0);
+  ctx.fillStyle = "#fff";
+  ctx.beginPath();
+  ctx.arc(center.x, center.y, 3, 0, Math.PI * 2);
+  ctx.fill();
 
   requestAnimationFrame(draw);
 }
