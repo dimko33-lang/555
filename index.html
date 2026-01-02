@@ -61,7 +61,7 @@
 </div>
 
 <!-- Информация о масштабе -->
-<div class="scale-info" id="scaleInfo">Масштаб: 1.00x</div>
+<div class="scale-info" id="scaleInfo">Масштаб: 0.30x</div>
 
 <script>
 const canvas = document.getElementById("c");
@@ -70,14 +70,20 @@ const ctx = canvas.getContext("2d");
 let angle = 0;
 let dragging = false;
 let lastX = 0;
-let scale = 0.3; // Уменьшил масштаб по умолчанию, чтобы вместить более длинные линии
+let scale = 0.3;
 let offsetX = 0, offsetY = 0;
 
-const numLines = 7;   
-const vertLineLength = 5000; // Увеличил в 5 раз: было 1000, стало 5000
-const lineSpacing = vertLineLength / (numLines - 1); // 1 секунда = 833.33px
-const halfSpacing = lineSpacing / 2; // 0.5 секунды = 416.67px
-const smallSpacing = lineSpacing / 10; // 0.1 секунды = 83.33px
+// ПАРАМЕТРЫ
+const numLines = 11;           // 11 линий (по 5 с каждой стороны + центральная)
+const secondsPerSide = 5;      // ±5 секунд от центра
+const vertLineLength = 3000;   // общая длина линий
+
+// РАСЧЕТ РАССТОЯНИЙ
+const lineSpacing = vertLineLength / (numLines - 1);           // 1.0 сек = 300px
+const halfSpacing = lineSpacing / 2;                          // 0.5 сек = 150px
+const smallSpacing = lineSpacing / 10;                        // 0.1 сек = 30px
+
+console.log(`1.0 сек = ${lineSpacing.toFixed(1)}px, 0.5 сек = ${halfSpacing.toFixed(1)}px, 0.1 сек = ${smallSpacing.toFixed(1)}px`);
 
 // drag
 canvas.addEventListener("pointerdown", e => {
@@ -115,7 +121,6 @@ canvas.addEventListener("wheel", e => {
   
   scale = Math.max(0.1, Math.min(5, scale));
   
-  // Центрируем на кресте после масштабирования
   offsetX = canvas.width/2;
   offsetY = canvas.height/2;
   
@@ -134,7 +139,7 @@ document.getElementById('zoomOut').addEventListener('click', () => {
 });
 
 document.getElementById('zoomReset').addEventListener('click', () => {
-  scale = 0.3; // Возвращаем к уменьшенному масштабу по умолчанию
+  scale = 0.3;
   offsetX = canvas.width/2;
   offsetY = canvas.height/2;
   updateScaleInfo();
@@ -185,18 +190,27 @@ function drawLine(x1, y1, x2, y2, color, width) {
   ctx.stroke();
 }
 
-// Функция рисования отметки
-function drawMark(px, py, dirX, dirY, length, color, width) {
+// Функция рисования отметки с разными стилями
+function drawMark(px, py, dirX, dirY, length, color, width, style = "solid") {
   const p = toScreen(px, py);
   const d = toScreen(px + dirX * length/2, py + dirY * length/2);
   const d2 = toScreen(px - dirX * length/2, py - dirY * length/2);
   
   ctx.strokeStyle = color;
   ctx.lineWidth = width;
+  
+  if (style === "dashed") {
+    ctx.setLineDash([3, 2]);
+  } else {
+    ctx.setLineDash([]);
+  }
+  
   ctx.beginPath();
   ctx.moveTo(d2.x, d2.y);
   ctx.lineTo(d.x, d.y);
   ctx.stroke();
+  
+  ctx.setLineDash([]); // Сбрасываем обратно
 }
 
 function draw() {
@@ -228,8 +242,7 @@ function draw() {
   // x′ (оранжевая)
   drawLine(xX0, xY0, xX1, xY1, "#fa0", 1);
 
-  // ВЫЧИСЛЯЕМ ВЕКТОРЫ ДЛЯ ОСЕЙ
-  // Вектор направления голубой оси (ct′)
+  // ВЕКТОРЫ ДЛЯ ОСЕЙ
   const ctDirX = ctX1 - ctX0;
   const ctDirY = ctY1 - ctY0;
   const ctLength = Math.sqrt(ctDirX*ctDirX + ctDirY*ctDirY);
@@ -238,7 +251,6 @@ function draw() {
   const ctPerpX = -ctUnitY;
   const ctPerpY = ctUnitX;
   
-  // Вектор направления оранжевой оси (x′)
   const xDirX = xX1 - xX0;
   const xDirY = xY1 - xY0;
   const xLength = Math.sqrt(xDirX*xDirX + xDirY*xDirY);
@@ -247,58 +259,62 @@ function draw() {
   const xPerpX = -xUnitY;
   const xPerpY = xUnitX;
   
-  // КОЛИЧЕСТВО ОТМЕТОК НА ОСЯХ (в одну сторону)
-  const marksPerSide = Math.floor(vertLineLength / 2 / lineSpacing);
-  
   // ОТМЕТКИ НА ГОЛУБОЙ ОСИ (ct′)
-  for(let j = 1; j <= marksPerSide; j++) {
-    const distance = j * lineSpacing;
+  for(let sec = 1; sec <= secondsPerSide; sec++) {
+    const distance = sec * lineSpacing;
     
-    // Большие отметки (1 секунда)
-    const markX1 = distance * ctUnitX;
-    const markY1 = distance * ctUnitY;
-    drawMark(markX1, markY1, ctPerpX, ctPerpY, 12, "#0aa", 0.8);
+    // БОЛЬШИЕ ОТМЕТКИ (1.0 сек) - ТОЛСТЫЕ, ЯРКИЕ
+    const bigX1 = distance * ctUnitX;
+    const bigY1 = distance * ctUnitY;
+    drawMark(bigX1, bigY1, ctPerpX, ctPerpY, 14, "#0ff", 1.5); // Ярко-голубые, толстые
     
-    const markX2 = -distance * ctUnitX;
-    const markY2 = -distance * ctUnitY;
-    drawMark(markX2, markY2, ctPerpX, ctPerpY, 12, "#0aa", 0.8);
+    const bigX2 = -distance * ctUnitX;
+    const bigY2 = -distance * ctUnitY;
+    drawMark(bigX2, bigY2, ctPerpX, ctPerpY, 14, "#0ff", 1.5);
     
-    // Отметки 0.5 секунды (средние)
+    // ОТМЕТКИ 0.5 сек - СРЕДНИЕ, ПУНКТИР
     const halfDistance = distance - halfSpacing;
-    if (halfDistance > 0) {
-      const halfX1 = halfDistance * ctUnitX;
-      const halfY1 = halfDistance * ctUnitY;
-      drawMark(halfX1, halfY1, ctPerpX, ctPerpY, 9, "#099", 0.6);
-      
-      const halfX2 = -halfDistance * ctUnitX;
-      const halfY2 = -halfDistance * ctUnitY;
-      drawMark(halfX2, halfY2, ctPerpX, ctPerpY, 9, "#099", 0.6);
-    }
+    const halfX1 = halfDistance * ctUnitX;
+    const halfY1 = halfDistance * ctUnitY;
+    drawMark(halfX1, halfY1, ctPerpX, ctPerpY, 10, "#0aa", 1.0, "dashed"); // Пунктир
+    
+    const halfX2 = -halfDistance * ctUnitX;
+    const halfY2 = -halfDistance * ctUnitY;
+    drawMark(halfX2, halfY2, ctPerpX, ctPerpY, 10, "#0aa", 1.0, "dashed");
   }
   
-  // МЕЛКИЕ ОТМЕТКИ (0.1 секунды) НА ГОЛУБОЙ ОСИ - БОЛЕЕ ЗАМЕТНЫЕ
-  const smallMarksPerSide = Math.floor(vertLineLength / 2 / smallSpacing);
-  for(let j = 1; j <= smallMarksPerSide; j++) {
-    // Пропускаем каждую 5-ю отметку (там отметка 0.5) и каждую 10-ю (там отметка 1.0)
-    if (j % 5 === 0 || j % 10 === 0) continue;
+  // МЕЛКИЕ ОТМЕТКИ (0.1 сек) НА ГОЛУБОЙ ОСИ - ТОЧКИ
+  const smallMarksPerSide = secondsPerSide * 10;
+  for(let tenth = 1; tenth <= smallMarksPerSide; tenth++) {
+    // Пропускаем каждую 5-ю и 10-ю отметки
+    if (tenth % 5 === 0 || tenth % 10 === 0) continue;
     
-    const distance = j * smallSpacing;
+    const distance = tenth * smallSpacing;
     const smallX1 = distance * ctUnitX;
     const smallY1 = distance * ctUnitY;
-    drawMark(smallX1, smallY1, ctPerpX, ctPerpY, 7, "#077", 0.5); // Увеличил длину и толщину
+    
+    // Рисуем точку вместо линии
+    const p = toScreen(smallX1, smallY1);
+    ctx.fillStyle = "#099";
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
+    ctx.fill();
     
     const smallX2 = -distance * ctUnitX;
     const smallY2 = -distance * ctUnitY;
-    drawMark(smallX2, smallY2, ctPerpX, ctPerpY, 7, "#077", 0.5);
+    const p2 = toScreen(smallX2, smallY2);
+    ctx.beginPath();
+    ctx.arc(p2.x, p2.y, 2, 0, Math.PI * 2);
+    ctx.fill();
   }
 
-  // ВЕРТИКАЛЬНЫЕ ЛИНИИ
+  // ВЕРТИКАЛЬНЫЕ ЛИНИИ (11 штук)
   for(let i=-Math.floor(numLines/2); i<=Math.floor(numLines/2); i++){
     const t = i / Math.floor(numLines/2); 
     const px = xX0 + (xX1 - xX0)*(0.5 + t/2); 
     const py = xY0 + (xY1 - xY0)*(0.5 + t/2);
     
-    // Вектор вертикальной линии (перпендикулярно x′)
+    // Вектор вертикальной линии
     const vertDx = -sinA;
     const vertDy = cosA;
     
@@ -312,49 +328,55 @@ function draw() {
       1
     );
     
-    // Вектор для отметок (параллельно x′)
+    // Вектор для отметок
     const markDx = cosA;
     const markDy = sinA;
     
     // ОТМЕТКИ НА ВЕРТИКАЛЬНЫХ ЛИНИЯХ
-    for(let j = 1; j <= marksPerSide; j++) {
-      const distance = j * lineSpacing;
+    for(let sec = 1; sec <= secondsPerSide; sec++) {
+      const distance = sec * lineSpacing;
       
-      // Большие отметки (1 секунда)
+      // БОЛЬШИЕ ОТМЕТКИ (1.0 сек)
       const upX = px - vertDx * distance;
       const upY = py - vertDy * distance;
-      drawMark(upX, upY, markDx, markDy, 10, "#aa0", 0.8);
+      drawMark(upX, upY, markDx, markDy, 12, "#fa0", 1.5); // Ярко-оранжевые
       
       const downX = px + vertDx * distance;
       const downY = py + vertDy * distance;
-      drawMark(downX, downY, markDx, markDy, 10, "#aa0", 0.8);
+      drawMark(downX, downY, markDx, markDy, 12, "#fa0", 1.5);
       
-      // Отметки 0.5 секунды (средние)
+      // ОТМЕТКИ 0.5 сек
       const halfDistance = distance - halfSpacing;
-      if (halfDistance > 0) {
-        const halfUpX = px - vertDx * halfDistance;
-        const halfUpY = py - vertDy * halfDistance;
-        drawMark(halfUpX, halfUpY, markDx, markDy, 8, "#990", 0.6);
-        
-        const halfDownX = px + vertDx * halfDistance;
-        const halfDownY = py + vertDy * halfDistance;
-        drawMark(halfDownX, halfDownY, markDx, markDy, 8, "#990", 0.6);
-      }
+      const halfUpX = px - vertDx * halfDistance;
+      const halfUpY = py - vertDy * halfDistance;
+      drawMark(halfUpX, halfUpY, markDx, markDy, 9, "#c80", 1.0, "dashed"); // Пунктир
+      
+      const halfDownX = px + vertDx * halfDistance;
+      const halfDownY = py + vertDy * halfDistance;
+      drawMark(halfDownX, halfDownY, markDx, markDy, 9, "#c80", 1.0, "dashed");
     }
     
-    // МЕЛКИЕ ОТМЕТКИ (0.1 секунды) НА ВЕРТИКАЛЬНЫХ ЛИНИЯХ - БОЛЕЕ ЗАМЕТНЫЕ
-    for(let j = 1; j <= smallMarksPerSide; j++) {
-      // Пропускаем каждую 5-ю отметку (там отметка 0.5) и каждую 10-ю (там отметка 1.0)
-      if (j % 5 === 0 || j % 10 === 0) continue;
+    // МЕЛКИЕ ОТМЕТКИ (0.1 сек) НА ВЕРТИКАЛЬНЫХ ЛИНИЯХ - ТОЧКИ
+    for(let tenth = 1; tenth <= secondsPerSide * 10; tenth++) {
+      if (tenth % 5 === 0 || tenth % 10 === 0) continue;
       
-      const distance = j * smallSpacing;
+      const distance = tenth * smallSpacing;
       const upX = px - vertDx * distance;
       const upY = py - vertDy * distance;
-      drawMark(upX, upY, markDx, markDy, 6, "#770", 0.5); // Увеличил длину и толщину
+      
+      // Точки вместо линий
+      const p = toScreen(upX, upY);
+      ctx.fillStyle = "#880";
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 1.5, 0, Math.PI * 2);
+      ctx.fill();
       
       const downX = px + vertDx * distance;
       const downY = py + vertDy * distance;
-      drawMark(downX, downY, markDx, markDy, 6, "#770", 0.5);
+      const p2 = toScreen(downX, downY);
+      ctx.beginPath();
+      ctx.arc(p2.x, p2.y, 1.5, 0, Math.PI * 2);
+      ctx.fill();
     }
   }
 
@@ -362,7 +384,7 @@ function draw() {
   const center = toScreen(0, 0);
   ctx.fillStyle = "#fff";
   ctx.beginPath();
-  ctx.arc(center.x, center.y, 3, 0, Math.PI * 2);
+  ctx.arc(center.x, center.y, 4, 0, Math.PI * 2);
   ctx.fill();
 
   requestAnimationFrame(draw);
