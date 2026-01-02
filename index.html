@@ -1,4 +1,4 @@
-  <!DOCTYPE html>
+    <!DOCTYPE html>
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
@@ -6,16 +6,155 @@
 <style>
   body { margin:0; background:#111; overflow:hidden; touch-action: none; }
   canvas { display:block; }
+  /* Кнопки управления */
+  .controls {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    display: flex;
+    gap: 8px;
+    z-index: 100;
+  }
+  .btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 5px;
+    background: rgba(0,0,0,0.7);
+    border: 1px solid rgba(255,255,255,0.3);
+    color: white;
+    font-size: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+  }
+  .btn:hover {
+    background: rgba(50,50,50,0.7);
+  }
+  .btn:active {
+    background: rgba(100,100,100,0.7);
+  }
+  /* Информация о масштабе */
+  .scale-info {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    background: rgba(0,0,0,0.7);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 5px;
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+    border: 1px solid rgba(255,255,255,0.2);
+  }
 </style>
 <body>
 <canvas id="c"></canvas>
+
+<!-- Кнопки управления -->
+<div class="controls">
+  <button class="btn" id="zoomIn" title="Увеличить">+</button>
+  <button class="btn" id="zoomOut" title="Уменьшить">-</button>
+  <button class="btn" id="zoomReset" title="Сбросить масштаб">↻</button>
+  <button class="btn" id="fullscreen" title="Полноэкранный режим">⛶</button>
+</div>
+
+<!-- Информация о масштабе -->
+<div class="scale-info" id="scaleInfo">Масштаб: 1.00x</div>
+
 <script>
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d");
 
-let angle = 0; // угол вращения крестика
+let angle = 0;
 let dragging = false;
 let lastX = 0;
+let scale = 1.0; // Масштаб
+let offsetX = 0, offsetY = 0; // Смещение
+
+const numLines = 7;   
+const vertLineLength = 1000;
+const lineSpacing = vertLineLength / (numLines - 1); // 166.67px
+
+// drag
+canvas.addEventListener("pointerdown", e => {
+  dragging = true;
+  lastX = e.clientX;
+});
+
+canvas.addEventListener("pointermove", e => {
+  if(dragging){
+    const dx = e.clientX - lastX;
+    angle -= dx * 0.01;
+    lastX = e.clientX;
+  }
+});
+
+canvas.addEventListener("pointerup", e => dragging = false);
+canvas.addEventListener("pointerleave", e => dragging = false);
+
+// Масштабирование колесом мыши
+canvas.addEventListener("wheel", e => {
+  e.preventDefault();
+  const zoomFactor = 1.1;
+  const rect = canvas.getBoundingClientRect();
+  const mouseX = e.clientX - rect.left;
+  const mouseY = e.clientY - rect.top;
+  
+  const worldX = (mouseX - offsetX) / scale;
+  const worldY = (mouseY - offsetY) / scale;
+  
+  if (e.deltaY < 0) {
+    // Увеличение
+    scale *= zoomFactor;
+  } else {
+    // Уменьшение
+    scale /= zoomFactor;
+  }
+  
+  // Ограничиваем масштаб
+  scale = Math.max(0.1, Math.min(5, scale));
+  
+  // Корректируем смещение для сохранения позиции мыши
+  offsetX = mouseX - worldX * scale;
+  offsetY = mouseY - worldY * scale;
+  
+  updateScaleInfo();
+});
+
+// Кнопки масштабирования
+document.getElementById('zoomIn').addEventListener('click', () => {
+  scale = Math.min(5, scale * 1.2);
+  updateScaleInfo();
+});
+
+document.getElementById('zoomOut').addEventListener('click', () => {
+  scale = Math.max(0.1, scale / 1.2);
+  updateScaleInfo();
+});
+
+document.getElementById('zoomReset').addEventListener('click', () => {
+  scale = 1.0;
+  offsetX = 0;
+  offsetY = 0;
+  updateScaleInfo();
+});
+
+// Полноэкранный режим
+document.getElementById('fullscreen').addEventListener('click', () => {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(err => {
+      console.error(`Ошибка полноэкранного режима: ${err.message}`);
+    });
+  } else {
+    document.exitFullscreen();
+  }
+});
+
+function updateScaleInfo() {
+  document.getElementById('scaleInfo').textContent = `Масштаб: ${scale.toFixed(2)}x`;
+}
 
 function resize() {
   canvas.width = window.innerWidth;
@@ -24,49 +163,54 @@ function resize() {
 window.addEventListener("resize", resize);
 resize();
 
-const numLines = 7;   
-const vertLineLength = 1000; // длина вертикальных линий и крестика
+// Функция преобразования мировых координат в экранные
+function toScreen(x, y) {
+  return {
+    x: x * scale + offsetX,
+    y: y * scale + offsetY
+  };
+}
 
-// РАСЧЕТ РАССТОЯНИЯ МЕЖДУ ВЕРТИКАЛЬНЫМИ ЛИНИЯМИ
-// При горизонтальной оси (angle=0):
-// - Длина оси x′ = vertLineLength = 1000px
-// - Количество интервалов = numLines - 1 = 6
-// - Расстояние между линиями = 1000 / 6 ≈ 166.67px
-const lineSpacing = vertLineLength / (numLines - 1); // 166.67px
+// Функция рисования линии с учетом масштаба
+function drawLine(x1, y1, x2, y2, color, width) {
+  const p1 = toScreen(x1, y1);
+  const p2 = toScreen(x2, y2);
+  
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.beginPath();
+  ctx.moveTo(p1.x, p1.y);
+  ctx.lineTo(p2.x, p2.y);
+  ctx.stroke();
+}
 
-// drag
-canvas.addEventListener("pointerdown", e => {
-  dragging = true;
-  lastX = e.clientX;
-});
-canvas.addEventListener("pointermove", e => {
-  if(dragging){
-    const dx = e.clientX - lastX;
-    angle -= dx * 0.01; // реверс вращения
-    lastX = e.clientX;
-  }
-});
-canvas.addEventListener("pointerup", e => dragging = false);
-canvas.addEventListener("pointerleave", e => dragging = false);
+// Функция рисования отметки
+function drawMark(px, py, dirX, dirY, length, color, width) {
+  const p = toScreen(px, py);
+  const d = toScreen(px + dirX * length/2, py + dirY * length/2);
+  const d2 = toScreen(px - dirX * length/2, py - dirY * length/2);
+  
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.beginPath();
+  ctx.moveTo(d2.x, d2.y);
+  ctx.lineTo(d.x, d.y);
+  ctx.stroke();
+}
 
 function draw() {
   ctx.clearRect(0,0,canvas.width,canvas.height);
-
-  const cx = canvas.width / 2;
-  const cy = canvas.height / 2;
+  
+  const cx = 0; // Центр в мировых координатах
+  const cy = 0;
 
   const cosA = Math.cos(angle);
   const sinA = Math.sin(angle);
 
   // --- горизонтальная ось ---
-  ctx.strokeStyle = "#888"; // серая
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(0, cy);
-  ctx.lineTo(canvas.width, cy);
-  ctx.stroke();
+  drawLine(-canvas.width, cy, canvas.width, cy, "#888", 2);
 
-  // крест ct′ + x′ (в центре)
+  // крест ct′ + x′
   const ctX0 = cx - sinA*vertLineLength/2;
   const ctY0 = cy - cosA*vertLineLength/2;
   const ctX1 = cx + sinA*vertLineLength/2;
@@ -77,76 +221,87 @@ function draw() {
   const xX1 = cx + cosA*vertLineLength/2;
   const xY1 = cy - sinA*vertLineLength/2;
 
-  // ct′
-  ctx.strokeStyle = "#0ff";
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(ctX0, ctY0);
-  ctx.lineTo(ctX1, ctY1);
-  ctx.stroke();
+  // ct′ (тонкая голубая)
+  drawLine(ctX0, ctY0, ctX1, ctY1, "#0ff", 1.5);
 
-  // x′ (тонкая)
-  ctx.strokeStyle = "#fa0";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(xX0, xY0);
-  ctx.lineTo(xX1, xY1);
-  ctx.stroke();
+  // x′ (тонкая оранжевая)
+  drawLine(xX0, xY0, xX1, xY1, "#fa0", 1);
 
-  // вертикальные линии, подвешенные к x′
-  ctx.strokeStyle = "#880";
-  ctx.lineWidth = 1;
+  // ОТМЕТКИ НА ГОЛУБОЙ ОСИ (ct′) через lineSpacing
+  const ctDirX = (ctX1 - ctX0);
+  const ctDirY = (ctY1 - ctY0);
+  const ctLength = Math.sqrt(ctDirX*ctDirX + ctDirY*ctDirY);
+  const ctUnitX = ctDirX / ctLength;
+  const ctUnitY = ctDirY / ctLength;
+  const ctPerpX = -ctUnitY;
+  const ctPerpY = ctUnitX;
   
-  // Количество отметок в каждую сторону от центра линии
-  const marksPerSide = Math.floor(vertLineLength / 2 / lineSpacing);
+  const ctMarks = Math.floor(ctLength / lineSpacing / 2);
+  for(let j = 1; j <= ctMarks; j++) {
+    // От центра в обе стороны
+    const markX1 = cx + ctUnitX * j * lineSpacing;
+    const markY1 = cy + ctUnitY * j * lineSpacing;
+    drawMark(markX1, markY1, ctPerpX, ctPerpY, 10, "#088", 0.8);
+    
+    const markX2 = cx - ctUnitX * j * lineSpacing;
+    const markY2 = cy - ctUnitY * j * lineSpacing;
+    drawMark(markX2, markY2, ctPerpX, ctPerpY, 10, "#088", 0.8);
+  }
+
+  // ВЕРТИКАЛЬНЫЕ ЛИНИИ
+  const vertMarks = Math.floor(vertLineLength / 2 / lineSpacing);
+  const smallMarkSpacing = lineSpacing / 10; // 0.1 секунды
   
   for(let i=-Math.floor(numLines/2); i<=Math.floor(numLines/2); i++){
     const t = i / Math.floor(numLines/2); 
     const px = xX0 + (xX1 - xX0)*(0.5 + t/2); 
     const py = xY0 + (xY1 - xY0)*(0.5 + t/2);
     
-    // Вектор направления вертикальной линии (перпендикулярно x′)
+    // Вектор вертикальной линии (перпендикулярно x′)
     const vertDx = -sinA;
     const vertDy = cosA;
     
     // Рисуем вертикальную линию
-    ctx.beginPath();
-    ctx.moveTo(px - vertDx * vertLineLength/2, py - vertDy * vertLineLength/2);
-    ctx.lineTo(px + vertDx * vertLineLength/2, py + vertDy * vertLineLength/2);
-    ctx.stroke();
+    drawLine(
+      px - vertDx * vertLineLength/2, 
+      py - vertDy * vertLineLength/2,
+      px + vertDx * vertLineLength/2, 
+      py + vertDy * vertLineLength/2,
+      "#880", 
+      1
+    );
     
-    // ОТМЕТКИ НА ВЕРТИКАЛЬНОЙ ЛИНИИ через lineSpacing (166.67px)
-    ctx.strokeStyle = "#aa0";
-    ctx.lineWidth = 0.8;
-    const markLength = 10;
-    
-    // Вектор для отметок (перпендикулярно вертикальной линии = параллельно x′)
+    // Вектор для отметок (параллельно x′)
     const markDx = cosA;
     const markDy = sinA;
     
-    // Отметки от центра линии в обе стороны
-    for(let j = 1; j <= marksPerSide; j++) {
-      // Вверх по вертикальной линии
-      const markYupX = px - vertDx * j * lineSpacing;
-      const markYupY = py - vertDy * j * lineSpacing;
+    // БОЛЬШИЕ ОТМЕТКИ (1 секунда)
+    for(let j = 1; j <= vertMarks; j++) {
+      // Вверх
+      const upX = px - vertDx * j * lineSpacing;
+      const upY = py - vertDy * j * lineSpacing;
+      drawMark(upX, upY, markDx, markDy, 10, "#aa0", 0.8);
       
-      ctx.beginPath();
-      ctx.moveTo(markYupX - markDx * markLength/2, markYupY - markDy * markLength/2);
-      ctx.lineTo(markYupX + markDx * markLength/2, markYupY + markDy * markLength/2);
-      ctx.stroke();
-      
-      // Вниз по вертикальной линии
-      const markYdownX = px + vertDx * j * lineSpacing;
-      const markYdownY = py + vertDy * j * lineSpacing;
-      
-      ctx.beginPath();
-      ctx.moveTo(markYdownX - markDx * markLength/2, markYdownY - markDy * markLength/2);
-      ctx.lineTo(markYdownX + markDx * markLength/2, markYdownY + markDy * markLength/2);
-      ctx.stroke();
+      // Вниз
+      const downX = px + vertDx * j * lineSpacing;
+      const downY = py + vertDy * j * lineSpacing;
+      drawMark(downX, downY, markDx, markDy, 10, "#aa0", 0.8);
     }
     
-    // Возвращаем цвет для следующих линий
-    ctx.strokeStyle = "#880";
+    // МЕЛКИЕ ОТМЕТКИ (0.1 секунды) - больше отметок
+    const smallMarks = Math.floor(vertLineLength / 2 / smallMarkSpacing);
+    for(let j = 1; j <= smallMarks; j++) {
+      // Пропускаем каждую 10-ю отметку (там уже большая отметка)
+      if (j % 10 === 0) continue;
+      
+      const upX = px - vertDx * j * smallMarkSpacing;
+      const upY = py - vertDy * j * smallMarkSpacing;
+      drawMark(upX, upY, markDx, markDy, 4, "#663", 0.4);
+      
+      const downX = px + vertDx * j * smallMarkSpacing;
+      const downY = py + vertDy * j * smallMarkSpacing;
+      drawMark(downX, downY, markDx, markDy, 4, "#663", 0.4);
+    }
   }
 
   requestAnimationFrame(draw);
