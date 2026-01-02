@@ -1,8 +1,8 @@
-<!DOCTYPE html>
+  <!DOCTYPE html>
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>СТО: крест с тонкой x′</title>
+<title>СТО: крест с горизонтальной осью</title>
 <style>
   body { margin:0; background:#111; overflow:hidden; touch-action: none; }
   canvas { display:block; }
@@ -79,9 +79,9 @@ function draw() {
   ctx.lineTo(ctX1, ctY1);
   ctx.stroke();
 
-  // x′ (тонкая)
+  // x′
   ctx.strokeStyle = "#fa0";
-  ctx.lineWidth = 2; // сделали тоньше
+  ctx.lineWidth = 4;
   ctx.beginPath();
   ctx.moveTo(xX0, xY0);
   ctx.lineTo(xX1, xY1);
@@ -93,7 +93,7 @@ function draw() {
   for(let i=-Math.floor(numLines/2); i<=Math.floor(numLines/2); i++){
     const t = i / Math.floor(numLines/2); 
     const px = xX0 + (xX1 - xX0)*(0.5 + t/2); 
-    const py = xY0 + (yY1 - xY0)*(0.5 + t/2);
+    const py = xY0 + (xY1 - xY0)*(0.5 + t/2);
     ctx.beginPath();
     ctx.moveTo(px, py - vertLineLength/2);
     ctx.lineTo(px, py + vertLineLength/2);
@@ -107,34 +107,3 @@ draw();
 </script>
 </body>
 </html>
-        // Отрисовка
-        function draw() {
-            ctx.clearRect(0,0,canvas.width,canvas.height);
-            const cx = canvas.width/2, cy = canvas.height/2;
-            const cos = Math.cos(angle), sin = Math.sin(angle);
-            
-            // Лабораторные оси
-            ctx.strokeStyle = "#888"; ctx.lineWidth = 3;
-            ctx.beginPath(); ctx.moveTo(0,cy); ctx.lineTo(canvas.width,cy); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(cx,0); ctx.lineTo(cx,canvas.height); ctx.stroke();
-            
-            // Движущиеся оси
-            const len = 300;
-            ctx.strokeStyle = "#0ff"; ctx.lineWidth = 4;
-            ctx.beginPath();
-            ctx.moveTo(cx - sin*len, cy - cos*len);
-            ctx.lineTo(cx + sin*len, cy + cos*len);
-            ctx.stroke();
-            
-            ctx.strokeStyle = "#fa0"; ctx.lineWidth = 4;
-            ctx.beginPath();
-            ctx.moveTo(cx - cos*len, cy + sin*len);
-            ctx.lineTo(cx + cos*len, cy - sin*len);
-            ctx.stroke();
-            
-            requestAnimationFrame(draw);
-        }
-        draw();
-    </script>
-</body>
-  </html>
