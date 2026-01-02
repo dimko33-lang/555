@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+   <!DOCTYPE html>
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
@@ -24,9 +24,9 @@ function resize() {
 window.addEventListener("resize", resize);
 resize();
 
-const numLines = 9;   // больше линий
-const spacing = 80;   // расстояние 1 секунда (80 пикселей = 1 световая секунда)
-const vertLineLength = 2000; // увеличил длину линий
+const numLines = 7;   
+const spacing = 60;    
+const vertLineLength = 1000; // длина вертикальных линий и крестика
 
 // drag
 canvas.addEventListener("pointerdown", e => {
@@ -36,7 +36,7 @@ canvas.addEventListener("pointerdown", e => {
 canvas.addEventListener("pointermove", e => {
   if(dragging){
     const dx = e.clientX - lastX;
-    angle -= dx * 0.01;
+    angle -= dx * 0.01; // реверс вращения
     lastX = e.clientX;
   }
 });
@@ -53,8 +53,8 @@ function draw() {
   const sinA = Math.sin(angle);
 
   // --- горизонтальная ось ---
-  ctx.strokeStyle = "#888";
-  ctx.lineWidth = 1; // тоньше
+  ctx.strokeStyle = "#888"; // серая
+  ctx.lineWidth = 2; /* Сделал тоньше: было 3 */
   ctx.beginPath();
   ctx.moveTo(0, cy);
   ctx.lineTo(canvas.width, cy);
@@ -71,100 +71,32 @@ function draw() {
   const xX1 = cx + cosA*vertLineLength/2;
   const xY1 = cy - sinA*vertLineLength/2;
 
-  // ct′ (тоньше)
+  // ct′
   ctx.strokeStyle = "#0ff";
-  ctx.lineWidth = 2; // было 4
+  ctx.lineWidth = 3; /* Сделал тоньше: было 4 */
   ctx.beginPath();
   ctx.moveTo(ctX0, ctY0);
   ctx.lineTo(ctX1, ctY1);
   ctx.stroke();
 
-  // x′ (ещё тоньше)
+  // x′ (тонкая)
   ctx.strokeStyle = "#fa0";
-  ctx.lineWidth = 1; // было 2
+  ctx.lineWidth = 1.5; /* Сделал ещё тоньше: было 2 */
   ctx.beginPath();
   ctx.moveTo(xX0, xY0);
   ctx.lineTo(xX1, xY1);
   ctx.stroke();
 
-  // вертикальные линии, подвешенные к x′ (1 световая секунда между ними)
+  // вертикальные линии, подвешенные к x′
   ctx.strokeStyle = "#880";
-  ctx.lineWidth = 0.5; // тоньше
+  ctx.lineWidth = 1;
   for(let i=-Math.floor(numLines/2); i<=Math.floor(numLines/2); i++){
-    // Позиция на оси x′ (расстояние в световых секундах)
-    const seconds = i; // i световых секунд от центра
-    
-    // Координаты на оси x′
-    const px = cx + (xX1 - cx) * (seconds / (numLines/2));
-    const py = cy + (xY1 - cy) * (seconds / (numLines/2));
-    
-    // Направление вдоль ct′ для вертикальных линий
-    const dx = ctX1 - cx;
-    const dy = ctY1 - cy;
-    const lineLength = vertLineLength * 1.5; // длиннее
-    
+    const t = i / Math.floor(numLines/2); 
+    const px = xX0 + (xX1 - xX0)*(0.5 + t/2); 
+    const py = xY0 + (xY1 - xY0)*(0.5 + t/2); // исправлено на xY1
     ctx.beginPath();
-    ctx.moveTo(px - dx/vertLineLength*lineLength/2, py - dy/vertLineLength*lineLength/2);
-    ctx.lineTo(px + dx/vertLineLength*lineLength/2, py + dy/vertLineLength*lineLength/2);
-    ctx.stroke();
-    
-    // Разметка на линиях (засечки через каждую секунду)
-    ctx.strokeStyle = "#aa0";
-    ctx.lineWidth = 1;
-    const numTicks = 8; // количество засечек на линии
-    for(let j=-numTicks; j<=numTicks; j++){
-      const tickSeconds = j; // 1 секунда между засечками
-      const tickX = px + dx/vertLineLength * spacing * tickSeconds;
-      const tickY = py + dy/vertLineLength * spacing * tickSeconds;
-      
-      // Перпендикулярное направление для засечек
-      const perpX = -dy/vertLineLength * 10; // длина засечки
-      const perpY = dx/vertLineLength * 10;
-      
-      ctx.beginPath();
-      ctx.moveTo(tickX - perpX/2, tickY - perpY/2);
-      ctx.lineTo(tickX + perpX/2, tickY + perpY/2);
-      ctx.stroke();
-    }
-    ctx.strokeStyle = "#880";
-  }
-
-  // Разметка на оси ct′ (секунды)
-  ctx.strokeStyle = "#0aa";
-  ctx.lineWidth = 1;
-  const numCTticks = 12;
-  for(let i=-numCTticks; i<=numCTticks; i++){
-    if(i === 0) continue; // пропускаем центр
-    
-    const tickX = cx + (ctX1 - cx) * (i/numCTticks);
-    const tickY = cy + (ctY1 - cy) * (i/numCTticks);
-    
-    // Перпендикулярное направление для засечек на ct′
-    const perpX = -(ctY1 - cy)/vertLineLength * 10;
-    const perpY = (ctX1 - cx)/vertLineLength * 10;
-    
-    ctx.beginPath();
-    ctx.moveTo(tickX - perpX/2, tickY - perpY/2);
-    ctx.lineTo(tickX + perpX/2, tickY + perpY/2);
-    ctx.stroke();
-  }
-
-  // Разметка на оси x′ (секунды)
-  ctx.strokeStyle = "#a80";
-  ctx.lineWidth = 1;
-  for(let i=-numCTticks; i<=numCTticks; i++){
-    if(i === 0) continue;
-    
-    const tickX = cx + (xX1 - cx) * (i/numCTticks);
-    const tickY = cy + (xY1 - cy) * (i/numCTticks);
-    
-    // Перпендикулярное направление для засечек на x′
-    const perpX = -(xY1 - cy)/vertLineLength * 10;
-    const perpY = (xX1 - cx)/vertLineLength * 10;
-    
-    ctx.beginPath();
-    ctx.moveTo(tickX - perpX/2, tickY - perpY/2);
-    ctx.lineTo(tickX + perpX/2, tickY + perpY/2);
+    ctx.moveTo(px, py - vertLineLength/2);
+    ctx.lineTo(px, py + vertLineLength/2);
     ctx.stroke();
   }
 
