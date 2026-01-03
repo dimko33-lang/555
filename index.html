@@ -140,6 +140,7 @@ let touchStartDistance = null;
 let touchStartAngle = null;
 let touchStartScale = 0.3;
 let touchStartRotation = 0;
+let initialTouches = [];
 
 // РАСЧЕТ РАССТОЯНИЙ
 const lineSpacing = vertLineLength / (numLines - 1);
@@ -170,6 +171,7 @@ canvas.addEventListener('touchstart', (e) => {
     touchStartAngle = getTouchAngle(e.touches);
     touchStartScale = scale;
     touchStartRotation = angle;
+    initialTouches = Array.from(e.touches);
   } else if (e.touches.length === 1) {
     // Начало перетаскивания одним пальцем
     dragging = true;
@@ -180,32 +182,39 @@ canvas.addEventListener('touchstart', (e) => {
 canvas.addEventListener('touchmove', (e) => {
   e.preventDefault();
   
-  if (e.touches.length === 2 && touchStartDistance !== null) {
+  if (e.touches.length === 2 && touchStartDistance !== null && touchStartDistance > 0) {
     // Обработка жеста двумя пальцами
     const currentDistance = getTouchDistance(e.touches);
     const currentAngle = getTouchAngle(e.touches);
     
     // Pinch-to-zoom
-    const zoomFactor = currentDistance / touchStartDistance;
-    scale = Math.max(0.1, Math.min(5, touchStartScale * zoomFactor));
+    if (touchStartDistance > 0) {
+      const zoomFactor = currentDistance / touchStartDistance;
+      let newScale = touchStartScale * zoomFactor;
+      scale = Math.max(0.1, Math.min(5, newScale));
+    }
     
     // Двухпальцевый поворот
-    const angleDelta = currentAngle - touchStartAngle;
-    angle = touchStartRotation + angleDelta * 0.5; // Коэффициент 0.5 для плавности
-    
-    // Ограничение угла (соответствует γ ≈ 1,000,000)
-    const maxAngle = Math.PI/2 * 0.9999999999;
-    angle = Math.max(-maxAngle, Math.min(maxAngle, angle));
+    if (touchStartAngle !== null) {
+      const angleDelta = currentAngle - touchStartAngle;
+      let newAngle = touchStartRotation + angleDelta * 0.8; // Коэффициент для плавности
+      
+      // Ограничение угла (соответствует γ ≈ 1,000,000)
+      const maxAngle = Math.PI/2 * 0.9999999999;
+      newAngle = Math.max(-maxAngle, Math.min(maxAngle, newAngle));
+      angle = newAngle;
+    }
     
     updateInfo();
   } else if (e.touches.length === 1 && dragging) {
     // Перетаскивание одним пальцем
     const dx = e.touches[0].clientX - lastX;
-    angle -= dx * 0.01;
+    let newAngle = angle - dx * 0.01;
     
     // Ограничение угла (соответствует γ ≈ 1,000,000)
     const maxAngle = Math.PI/2 * 0.9999999999;
-    angle = Math.max(-maxAngle, Math.min(maxAngle, angle));
+    newAngle = Math.max(-maxAngle, Math.min(maxAngle, newAngle));
+    angle = newAngle;
     
     lastX = e.touches[0].clientX;
     updateInfo();
@@ -217,6 +226,7 @@ canvas.addEventListener('touchend', (e) => {
   if (e.touches.length < 2) {
     touchStartDistance = null;
     touchStartAngle = null;
+    initialTouches = [];
   }
 });
 
@@ -229,11 +239,12 @@ canvas.addEventListener("pointerdown", e => {
 canvas.addEventListener("pointermove", e => {
   if(dragging){
     const dx = e.clientX - lastX;
-    angle -= dx * 0.01;
+    let newAngle = angle - dx * 0.01;
     
     // Ограничение угла (соответствует γ ≈ 1,000,000)
     const maxAngle = Math.PI/2 * 0.9999999999;
-    angle = Math.max(-maxAngle, Math.min(maxAngle, angle));
+    newAngle = Math.max(-maxAngle, Math.min(maxAngle, newAngle));
+    angle = newAngle;
     
     lastX = e.clientX;
     updateInfo();
@@ -308,33 +319,46 @@ function updateInfo() {
   // v/c = sin(angle) для простой визуализации
   const velocity = Math.sin(angle);
   
-  // Форматируем скорость: 0.000c до 0.999...c
+  // Форматируем скорость
   let velocityStr;
   if (Math.abs(velocity) < 0.0001) {
     velocityStr = "0.000c";
   } else {
     // Показываем больше знаков при высокой скорости
-    if (Math.abs(velocity) > 0.999) {
-      velocityStr = Math.abs(velocity).toFixed(9) + "c";
-    } else if (Math.abs(velocity) > 0.99) {
-      velocityStr = Math.abs(velocity).toFixed(6) + "c";
+    const absV = Math.abs(velocity);
+    if (absV > 0.999999) {
+      // Форматируем для очень высоких скоростей
+      const vStr = absV.toFixed(12);
+      // Находим индекс первой не-9 цифры
+      let i;
+      for (i = 2; i < vStr.length; i++) {
+        if (vStr[i] !== '9' && vStr[i] !== '.') break;
+      }
+      velocityStr = "0." + "9".repeat(i-2) + "...c";
+    } else if (absV > 0.999) {
+      velocityStr = absV.toFixed(6) + "c";
+    } else if (absV > 0.99) {
+      velocityStr = absV.toFixed(5) + "c";
     } else {
-      velocityStr = Math.abs(velocity).toFixed(3) + "c";
+      velocityStr = absV.toFixed(3) + "c";
     }
     if (velocity < 0) velocityStr = "-" + velocityStr;
   }
   
   // Вычисляем γ (с защитой от деления на ноль)
   let gamma = 1;
-  if (Math.abs(velocity) < 0.999999999999) {
-    gamma = 1 / Math.sqrt(1 - velocity * velocity);
+  const v = Math.abs(velocity);
+  if (v < 0.999999999999) {
+    gamma = 1 / Math.sqrt(1 - v * v);
   } else {
-    gamma = 1000000; // Максимальное значение при ограничении угла
+    gamma = 1000000; // Максимальное значение
   }
   
   // Форматируем γ
   let gammaStr;
-  if (gamma > 10000) {
+  if (gamma > 1000000) {
+    gammaStr = ">1M";
+  } else if (gamma > 10000) {
     gammaStr = gamma.toExponential(2);
   } else if (gamma > 1000) {
     gammaStr = gamma.toFixed(0);
@@ -431,13 +455,13 @@ function drawPoint(px, py, radius, darkColor, lightColor) {
 }
 
 // Функция рисования текста (только при достаточно крупном масштабе)
-function drawText(text, px, py, darkColor, lightColor, fontSize = 10) {
+function drawText(text, px, py, darkColor, lightColor, fontSize = 10, align = "center") {
   if (scale < 0.5) return; // Не показывать текст при маленьком масштабе
   
   const p = toScreen(px, py);
   ctx.font = `${fontSize}px Arial`;
   ctx.fillStyle = getColor(darkColor, lightColor);
-  ctx.textAlign = "center";
+  ctx.textAlign = align;
   ctx.textBaseline = "middle";
   ctx.fillText(text, p.x, p.y);
 }
@@ -502,12 +526,23 @@ function draw() {
     const bigX1 = distance * ctUnitX;
     const bigY1 = distance * ctUnitY;
     drawMark(bigX1, bigY1, ctPerpX, ctPerpY, 14, "#0ff", "#08f", 1.5);
-    drawText(sec.toString(), bigX1 + ctPerpX * 8, bigY1 + ctPerpY * 8, "#0ff", "#08f", 10);
+    // Цифры на голубой оси (только при масштабе > 0.5)
+    if (scale > 0.5) {
+      drawText(sec.toString(), 
+               bigX1 + ctPerpX * 15, 
+               bigY1 + ctPerpY * 15, 
+               "#0ff", "#08f", 12);
+    }
     
     const bigX2 = -distance * ctUnitX;
     const bigY2 = -distance * ctUnitY;
     drawMark(bigX2, bigY2, ctPerpX, ctPerpY, 14, "#0ff", "#08f", 1.5);
-    drawText((-sec).toString(), bigX2 + ctPerpX * 8, bigY2 + ctPerpY * 8, "#0ff", "#08f", 10);
+    if (scale > 0.5) {
+      drawText((-sec).toString(), 
+               bigX2 + ctPerpX * 15, 
+               bigY2 + ctPerpY * 15, 
+               "#0ff", "#08f", 12);
+    }
     
     // ОТМЕТКИ 0.5 сек
     const halfDistance = distance - halfSpacing;
@@ -558,13 +593,18 @@ function draw() {
       const upX = px;
       const upY = py - distance;
       drawMark(upX, upY, 1, 0, 12, "#888", "#666", 1.5);
-      drawText(sec.toString(), upX - 8, upY, "#888", "#666", 10);
+      // Цифры на вертикальных линиях (только при масштабе > 0.5)
+      if (scale > 0.5) {
+        drawText(sec.toString(), upX - 12, upY, "#888", "#666", 10, "right");
+      }
       
       // БОЛЬШИЕ ОТМЕТКИ (1.0 сек) - ВНИЗ
       const downX = px;
       const downY = py + distance;
       drawMark(downX, downY, 1, 0, 12, "#888", "#666", 1.5);
-      drawText((-sec).toString(), downX - 8, downY, "#888", "#666", 10);
+      if (scale > 0.5) {
+        drawText((-sec).toString(), downX - 12, downY, "#888", "#666", 10, "right");
+      }
       
       // ОТМЕТКИ 0.5 сек
       const halfDistance = distance - halfSpacing;
@@ -577,7 +617,7 @@ function draw() {
       drawMark(halfDownX, halfDownY, 1, 0, 9, "#888", "#666", 1.0, "dashed");
     }
     
-    // МЕЛКИЕ ОТМЕТКИ (0.1 сек)
+    // МЕЛКИЕ ОТМЕТКИ (0.1 сек) на вертикальных линиях
     for(let tenth = 1; tenth <= secondsPerSide * 10; tenth++) {
       if (tenth % 5 === 0) continue;
       
@@ -590,6 +630,11 @@ function draw() {
       const downX = px;
       const downY = py + distance;
       drawPoint(downX, downY, 1.5, "#888", "#666");
+    }
+    
+    // Подписи для вертикальных линий (расстояния)
+    if (scale > 0.7 && i !== 0) {
+      drawText(i.toString(), px, py + 20, "#888", "#666", 10);
     }
   }
 
@@ -608,4 +653,4 @@ updateInfo();
 draw();
 </script>
 </body>
-</html>
+  </html>
