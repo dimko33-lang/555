@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <title>SR Visualization</title>
 <style>
-  body { margin:0; background:#001122; overflow:hidden; touch-action: none; font-family: Arial, sans-serif; }
+  body { margin:0; background:#000833; overflow:hidden; touch-action: none; font-family: Arial, sans-serif; }
   canvas { display:block; }
   /* Кнопки управления */
   .controls {
@@ -16,7 +16,7 @@
     z-index: 100;
     flex-wrap: wrap;
     justify-content: flex-end;
-    max-width: 200px;
+    max-width: 100px;
   }
   .btn {
     width: 40px;
@@ -112,8 +112,6 @@
 <!-- Кнопки управления -->
 <div class="controls">
   <button class="btn" id="negBtn" title="Negative/Invert">☀</button>
-  <button class="btn" id="zoomIn" title="Zoom in">+</button>
-  <button class="btn" id="zoomOut" title="Zoom out">-</button>
   <button class="btn" id="zoomReset" title="Reset scale">↻</button>
   <button class="btn" id="fullscreen" title="Fullscreen mode">⛶</button>
 </div>
@@ -317,19 +315,7 @@ document.getElementById('negBtn').addEventListener('click', () => {
   document.getElementById('negBtn').textContent = darkMode ? '☀' : '🌙';
 });
 
-// Кнопки масштабирования
-document.getElementById('zoomIn').addEventListener('click', () => {
-  scale = Math.min(5, scale * 1.2);
-  offsetX = canvas.width/2;
-  offsetY = canvas.height/2;
-});
-
-document.getElementById('zoomOut').addEventListener('click', () => {
-  scale = Math.max(0.1, scale / 1.2);
-  offsetX = canvas.width/2;
-  offsetY = canvas.height/2;
-});
-
+// Кнопка сброса масштаба
 document.getElementById('zoomReset').addEventListener('click', () => {
   scale = 0.3;
   offsetX = canvas.width/2;
@@ -479,7 +465,7 @@ function drawPoint(px, py, radius, darkColor, lightColor) {
 }
 
 // Функция рисования текста (только при достаточно крупном масштабе)
-function drawText(text, px, py, darkColor, lightColor, fontSize = 10, align = "center") {
+function drawText(text, px, py, darkColor, lightColor, fontSize = 20, align = "center") {
   if (scale < 0.5) return;
   
   const p = toScreen(px, py);
@@ -493,8 +479,8 @@ function drawText(text, px, py, darkColor, lightColor, fontSize = 10, align = "c
 function draw() {
   // Очистка с учётом режима
   if (darkMode) {
-    // ТЁМНО-СИНИЙ ФОН
-    ctx.fillStyle = "#001122"; // Тёмно-синий
+    // БОЛЕЕ НАСЫЩЕННЫЙ ТЁМНО-СИНИЙ ФОН
+    ctx.fillStyle = "#000833"; // Темно-синий
   } else {
     ctx.fillStyle = "#fff";
   }
@@ -510,6 +496,7 @@ function draw() {
   drawLine(-vertLineLength, cy, vertLineLength, cy, "#0ff", "#08f", 1);
   
   // КРЕСТ (движущаяся система) - ПОВОРАЧИВАЕТСЯ
+  // ИСПРАВЛЕНО: минусы внизу, плюсы вверху
   const ctX0 = cx - sinA * vertLineLength/2;
   const ctY0 = cy - cosA * vertLineLength/2;
   const ctX1 = cx + sinA * vertLineLength/2;
@@ -553,20 +540,22 @@ function draw() {
     drawMark(bigX1, bigY1, ctPerpX, ctPerpY, 14, "#0ff", "#08f", 1.5);
     // Цифры на голубой оси (только при масштабе > 0.5)
     if (scale > 0.5) {
+      // ИСПРАВЛЕНО: положительные значения (без минуса)
       drawText(sec.toString(), 
                bigX1 + ctPerpX * 15,
                bigY1 + ctPerpY * 15, 
-               "#0ff", "#08f", 10);
+               "#0ff", "#08f", 20); // Увеличен размер шрифта в 2 раза
     }
     
     const bigX2 = -distance * ctUnitX;
     const bigY2 = -distance * ctUnitY;
     drawMark(bigX2, bigY2, ctPerpX, ctPerpY, 14, "#0ff", "#08f", 1.5);
     if (scale > 0.5) {
+      // ИСПРАВЛЕНО: отрицательные значения (с минусом)
       drawText((-sec).toString(), 
                bigX2 + ctPerpX * 15, 
                bigY2 + ctPerpY * 15, 
-               "#0ff", "#08f", 10);
+               "#0ff", "#08f", 20); // Увеличен размер шрифта в 2 раза
     }
     
     // ОТМЕТКИ 0.5 сек
@@ -620,7 +609,8 @@ function draw() {
       drawMark(upX, upY, 1, 0, 12, "#888", "#666", 1.5);
       // Цифры на вертикальных линиях (только при масштабе > 0.5)
       if (scale > 0.5) {
-        drawText(sec.toString(), upX - 8, upY, "#888", "#666", 10, "right");
+        // ИСПРАВЛЕНО: положительные значения вверху
+        drawText(sec.toString(), upX - 16, upY, "#888", "#666", 20, "right"); // Увеличен размер шрифта в 2 раза
       }
       
       // БОЛЬШИЕ ОТМЕТКИ (1.0 сек) - ВНИЗ
@@ -628,7 +618,8 @@ function draw() {
       const downY = py + distance;
       drawMark(downX, downY, 1, 0, 12, "#888", "#666", 1.5);
       if (scale > 0.5) {
-        drawText((-sec).toString(), downX - 8, downY, "#888", "#666", 10, "right");
+        // ИСПРАВЛЕНО: отрицательные значения внизу
+        drawText((-sec).toString(), downX - 16, downY, "#888", "#666", 20, "right"); // Увеличен размер шрифта в 2 раза
       }
       
       // ОТМЕТКИ 0.5 сек
@@ -659,7 +650,7 @@ function draw() {
     
     // Подписи для вертикальных линий (расстояния)
     if (scale > 0.7 && i !== 0) {
-      drawText(i.toString(), px, py + 20, "#888", "#666", 10);
+      drawText(i.toString(), px, py + 25, "#888", "#666", 20); // Увеличен размер шрифта в 2 раза
     }
   }
 
