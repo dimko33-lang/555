@@ -2,9 +2,9 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>СТО: крест с тонкой x′</title>
+<title>СТО: преобразования Лоренца</title>
 <style>
-  body { margin:0; background:#111; overflow:hidden; touch-action: none; }
+  body { margin:0; background:#111; overflow:hidden; touch-action: none; font-family: Arial, sans-serif; }
   canvas { display:block; }
   /* Кнопки управления */
   .controls {
@@ -39,35 +39,42 @@
   .btn:active {
     transform: scale(0.95);
   }
-  /* Информация о масштабе и скорости */
+  /* Панель информации */
   .info-panel {
     position: absolute;
     top: 10px;
     left: 10px;
     background: rgba(0,0,0,0.7);
     color: white;
-    padding: 10px 15px;
+    padding: 12px 15px;
     border-radius: 5px;
-    font-family: Arial, sans-serif;
     font-size: 14px;
     border: 1px solid rgba(255,255,255,0.2);
     z-index: 100;
-    min-width: 200px;
+    min-width: 180px;
+  }
+  .info-title {
+    color: #0ff;
+    font-weight: bold;
+    margin-bottom: 8px;
+    font-size: 16px;
   }
   .info-item {
-    margin: 3px 0;
+    margin: 5px 0;
     display: flex;
     justify-content: space-between;
+    align-items: center;
   }
   .info-label {
     color: #aaa;
   }
   .info-value {
     font-weight: bold;
-    color: #0ff;
+    font-family: 'Courier New', monospace;
   }
   .speed-value {
     color: #fa0;
+    font-size: 16px;
   }
   
   /* Стили для светлого режима */
@@ -87,6 +94,9 @@
   body.light-mode .info-label {
     color: #666;
   }
+  body.light-mode .info-title {
+    color: #08f;
+  }
 </style>
 </head>
 <body>
@@ -94,30 +104,24 @@
 
 <!-- Панель информации -->
 <div class="info-panel" id="infoPanel">
+  <div class="info-title">СТО: Преобразования Лоренца</div>
   <div class="info-item">
     <span class="info-label">Скорость:</span>
     <span class="info-value speed-value" id="speedValue">0.0% c</span>
   </div>
   <div class="info-item">
-    <span class="info-label">Масштаб:</span>
-    <span class="info-value" id="scaleValue">0.30x</span>
-  </div>
-  <div class="info-item">
-    <span class="info-label">Угол:</span>
-    <span class="info-value" id="angleValue">0.0°</span>
-  </div>
-  <div class="info-item">
     <span class="info-label">γ (гамма):</span>
     <span class="info-value" id="gammaValue">1.000</span>
+  </div>
+  <div class="info-item">
+    <span class="info-label">Быстрота:</span>
+    <span class="info-value" id="rapidityValue">0.000</span>
   </div>
 </div>
 
 <!-- Кнопки управления -->
 <div class="controls">
   <button class="btn" id="negBtn" title="Негатив/Инверсия">☀</button>
-  <button class="btn" id="zoomIn" title="Увеличить">+</button>
-  <button class="btn" id="zoomOut" title="Уменьшить">-</button>
-  <button class="btn" id="zoomReset" title="Сбросить масштаб">↻</button>
   <button class="btn" id="fullscreen" title="Полноэкранный режим">⛶</button>
 </div>
 
@@ -125,12 +129,10 @@
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d");
 
-let angle = 0;
+let rapidity = 0; // БЫСТРОТА (в СТО вместо угла)
 let dragging = false;
 let lastX = 0;
-let scale = 0.3;
-let offsetX = 0, offsetY = 0;
-let darkMode = true; // true = тёмный режим, false = светлый
+let darkMode = true;
 
 // ПАРАМЕТРЫ
 const numLines = 11;
@@ -151,7 +153,9 @@ canvas.addEventListener("pointerdown", e => {
 canvas.addEventListener("pointermove", e => {
   if(dragging){
     const dx = e.clientX - lastX;
-    angle -= dx * 0.01;
+    rapidity -= dx * 0.01;
+    // Ограничиваем быстроту (соответствует v < 0.999c)
+    rapidity = Math.max(-3, Math.min(3, rapidity));
     lastX = e.clientX;
     updateInfo();
   }
@@ -160,54 +164,11 @@ canvas.addEventListener("pointermove", e => {
 canvas.addEventListener("pointerup", e => dragging = false);
 canvas.addEventListener("pointerleave", e => dragging = false);
 
-// Масштабирование колесом мыши
-canvas.addEventListener("wheel", e => {
-  e.preventDefault();
-  const zoomFactor = 1.1;
-  const rect = canvas.getBoundingClientRect();
-  const mouseX = e.clientX - rect.left;
-  const mouseY = e.clientY - rect.top;
-  
-  const worldX = (mouseX - offsetX) / scale;
-  const worldY = (mouseY - offsetY) / scale;
-  
-  if (e.deltaY < 0) {
-    scale *= zoomFactor;
-  } else {
-    scale /= zoomFactor;
-  }
-  
-  scale = Math.max(0.1, Math.min(5, scale));
-  
-  offsetX = canvas.width/2;
-  offsetY = canvas.height/2;
-  
-  updateInfo();
-});
-
 // Кнопка негатива/светлого режима
 document.getElementById('negBtn').addEventListener('click', () => {
   darkMode = !darkMode;
   document.body.classList.toggle('light-mode', !darkMode);
   document.getElementById('negBtn').textContent = darkMode ? '☀' : '🌙';
-});
-
-// Кнопки масштабирования
-document.getElementById('zoomIn').addEventListener('click', () => {
-  scale = Math.min(5, scale * 1.2);
-  updateInfo();
-});
-
-document.getElementById('zoomOut').addEventListener('click', () => {
-  scale = Math.max(0.1, scale / 1.2);
-  updateInfo();
-});
-
-document.getElementById('zoomReset').addEventListener('click', () => {
-  scale = 0.3;
-  offsetX = canvas.width/2;
-  offsetY = canvas.height/2;
-  updateInfo();
 });
 
 // Полноэкранный режим
@@ -221,17 +182,19 @@ document.getElementById('fullscreen').addEventListener('click', () => {
   }
 });
 
-// Обновление информации
+// Обновление информации (ПРАВИЛЬНО для СТО!)
 function updateInfo() {
-  // Вычисляем скорость v/c из угла (преобразование Лоренца)
-  const velocity = Math.sin(angle); // упрощённо: v/c = sin(angle)
-  const velocityPercent = (velocity * 100).toFixed(1);
-  const gamma = 1 / Math.sqrt(1 - velocity * velocity);
+  // В СТО: v/c = tanh(rapidity), γ = cosh(rapidity)
+  const velocity = Math.tanh(rapidity); // v/c от -1 до 1
+  const velocityPercent = (Math.abs(velocity) * 100).toFixed(1);
+  const gamma = Math.cosh(rapidity); // γ ≥ 1
   
-  document.getElementById('speedValue').textContent = `${velocityPercent}% c`;
-  document.getElementById('scaleValue').textContent = `${scale.toFixed(2)}x`;
-  document.getElementById('angleValue').textContent = `${(angle * 180 / Math.PI).toFixed(1)}°`;
+  // Определяем знак скорости
+  const sign = velocity >= 0 ? '+' : '-';
+  
+  document.getElementById('speedValue').textContent = `${sign}${velocityPercent}% c`;
   document.getElementById('gammaValue').textContent = gamma.toFixed(3);
+  document.getElementById('rapidityValue').textContent = rapidity.toFixed(3);
   
   // Цвет скорости в зависимости от величины
   const speedValue = document.getElementById('speedValue');
@@ -240,6 +203,8 @@ function updateInfo() {
     speedValue.style.color = darkMode ? '#0f0' : '#080';
   } else if (absV < 0.7) {
     speedValue.style.color = darkMode ? '#ff0' : '#880';
+  } else if (absV < 0.95) {
+    speedValue.style.color = darkMode ? '#f80' : '#c60';
   } else {
     speedValue.style.color = darkMode ? '#f00' : '#c00';
   }
@@ -248,17 +213,16 @@ function updateInfo() {
 function resize() {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
-  offsetX = canvas.width/2;
-  offsetY = canvas.height/2;
 }
 window.addEventListener("resize", resize);
 resize();
 
 // Функция преобразования мировых координат в экранные
 function toScreen(x, y) {
+  // Центрируем крест на экране
   return {
-    x: x * scale + offsetX,
-    y: y * scale + offsetY
+    x: x + canvas.width/2,
+    y: y + canvas.height/2
   };
 }
 
@@ -321,25 +285,26 @@ function draw() {
   }
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   
-  const cx = 0;
+  const cx = 0; // центр в мировых координатах
   const cy = 0;
 
-  const cosA = Math.cos(angle);
-  const sinA = Math.sin(angle);
+  // В СТО используем гиперболические функции!
+  const cosh = Math.cosh(rapidity);
+  const sinh = Math.sinh(rapidity);
 
-  // --- горизонтальная ось ---
-  drawLine(-vertLineLength, cy, vertLineLength, cy, "#888", "#666", 2);
+  // --- горизонтальная ось (лабораторная система) ---
+  drawLine(-vertLineLength/2, cy, vertLineLength/2, cy, "#888", "#666", 2);
 
-  // крест ct′ + x′
-  const ctX0 = cx - sinA*vertLineLength/2;
-  const ctY0 = cy - cosA*vertLineLength/2;
-  const ctX1 = cx + sinA*vertLineLength/2;
-  const ctY1 = cy + cosA*vertLineLength/2;
+  // крест ct′ + x′ (движущаяся система)
+  const ctX0 = cx - sinh * vertLineLength/2;
+  const ctY0 = cy - cosh * vertLineLength/2;
+  const ctX1 = cx + sinh * vertLineLength/2;
+  const ctY1 = cy + cosh * vertLineLength/2;
 
-  const xX0 = cx - cosA*vertLineLength/2;
-  const xY0 = cy + sinA*vertLineLength/2;
-  const xX1 = cx + cosA*vertLineLength/2;
-  const xY1 = cy - sinA*vertLineLength/2;
+  const xX0 = cx - cosh * vertLineLength/2;
+  const xY0 = cy + sinh * vertLineLength/2;
+  const xX1 = cx + cosh * vertLineLength/2;
+  const xY1 = cy - sinh * vertLineLength/2;
 
   // ct′ (голубая)
   drawLine(ctX0, ctY0, ctX1, ctY1, "#0ff", "#08f", 1);
@@ -410,8 +375,10 @@ function draw() {
     const px = xX0 + (xX1 - xX0)*(0.5 + t/2); 
     const py = xY0 + (xY1 - xY0)*(0.5 + t/2);
     
-    const vertDx = -sinA;
-    const vertDy = cosA;
+    // Вектор вертикальной линии (перпендикулярно x′ в пространстве Минковского)
+    // В СТО: перпендикуляр к x′ это направление ct′
+    const vertDx = -sinh;
+    const vertDy = cosh;
     
     // Рисуем вертикальную линию
     drawLine(
@@ -423,8 +390,9 @@ function draw() {
       1
     );
     
-    const markDx = cosA;
-    const markDy = sinA;
+    // Вектор для отметок (параллельно x′)
+    const markDx = cosh;
+    const markDy = sinh;
     
     // ОТМЕТКИ НА ВЕРТИКАЛЬНЫХ ЛИНИЯХ
     for(let sec = 1; sec <= secondsPerSide; sec++) {
@@ -450,7 +418,7 @@ function draw() {
       drawMark(halfDownX, halfDownY, markDx, markDy, 9, "#c80", "#a50", 1.0, "dashed");
     }
     
-    // МЕЛКИЕ ОТМЕТКИ (0.1 сек)
+    // МЕЛКИЕ ОТМЕТКИ (0.1 сек) НА ВЕРТИКАЛЬНЫХ ЛИНИЯХ
     for(let tenth = 1; tenth <= secondsPerSide * 10; tenth++) {
       if (tenth % 5 === 0 || tenth % 10 === 0) continue;
       
