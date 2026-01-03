@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>SR Visualization</title>
+<title>SR Hyperbolic Visualization</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <style>
   body { 
@@ -20,7 +20,6 @@
     z-index: 1;
   }
   
-  /* Кнопки управления в ряд */
   .controls {
     position: fixed;
     top: 10px;
@@ -55,7 +54,6 @@
     transform: scale(0.95);
   }
   
-  /* Панель информации - подогнана по высоте под кнопки */
   .info-panel {
     position: fixed;
     top: 10px;
@@ -91,12 +89,11 @@
     color: #fa0;
     font-size: 14px;
   }
-  .gamma-value {
+  .rapidity-value {
     color: #0ff;
     font-size: 14px;
   }
   
-  /* Стили для светлого режима */
   body.light-mode {
     background: #fff;
   }
@@ -113,26 +110,39 @@
   body.light-mode .info-label {
     color: #666;
   }
+  
+  .mode-indicator {
+    position: fixed;
+    top: 60px;
+    right: 10px;
+    background: rgba(0,0,0,0.7);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-size: 12px;
+    z-index: 100;
+    border: 1px solid rgba(255,255,255,0.2);
+  }
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
 
-<!-- Панель информации -->
 <div class="info-panel" id="infoPanel">
   <div class="info-item">
-    <span class="info-label">Speed:</span>
-    <span class="info-value speed-value" id="speedValue">0.000c</span>
+    <span class="info-label">β=v/c:</span>
+    <span class="info-value speed-value" id="speedValue">0.000</span>
   </div>
   <div class="info-item">
-    <span class="info-label">γ:</span>
-    <span class="info-value gamma-value" id="gammaValue">1.000</span>
+    <span class="info-label">Rapidity φ:</span>
+    <span class="info-value rapidity-value" id="rapidityValue">0.000</span>
   </div>
 </div>
 
-<!-- Кнопки управления -->
+<div class="mode-indicator" id="modeIndicator">Hyperbolic</div>
+
 <div class="controls">
-  <button class="btn" id="negBtn" title="Negative/Invert">☀</button>
+  <button class="btn" id="switchMode" title="Switch mode">🔀</button>
   <button class="btn" id="zoomReset" title="Reset scale">↻</button>
   <button class="btn" id="fullscreen" title="Fullscreen mode">⛶</button>
 </div>
@@ -142,62 +152,58 @@ const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d");
 
 // Параметры визуализации
-let angle = 0; // угол поворота креста
+let rapidity = 0; // быстрота (гиперболический угол)
 let dragging = false;
 let lastX = 0;
 let scale = 0.3;
 let offsetX = 0, offsetY = 0;
 let darkMode = true;
+let isHyperbolic = true; // true - гиперболическая, false - евклидова
 
-// ПАРАМЕТРЫ (увеличенные)
-const numLines = 21; // 10 с каждой стороны + центральная = 21
-const secondsPerSide = 10; // было 5, теперь 10
-const vertLineLength = 3000;
+// Параметры сетки
+const numLines = 21;
+const unitsPerSide = 5; // единиц на сторону
+const worldLength = 3000;
 
-// ТARGET GAMMA = 1,000,000
+// Максимальная быстрота (соответствует γ=1,000,000)
 const TARGET_GAMMA = 1000000.000;
-// Вычисляем скорость для γ = 1,000,000
-const TARGET_V = Math.sqrt(1 - 1/(TARGET_GAMMA * TARGET_GAMMA));
-// Вычисляем угол для этой скорости (v/c = sin(angle))
-const MAX_ANGLE = Math.asin(TARGET_V);
+const MAX_RAPIDITY = Math.acosh(TARGET_GAMMA);
 
-// МУЛЬТИТАЧ ПЕРЕМЕННЫЕ для умного жеста
+// Мультитач переменные
 let touchStartDistance = null;
 let touchStartAngle = null;
 let touchStartCenterX = 0;
 let touchStartCenterY = 0;
 let touchStartScale = 0.3;
-let touchStartAngleSystem = 0;
+let touchStartRapidity = 0;
 let touchStartOffsetX = 0;
 let touchStartOffsetY = 0;
 let touchStartWorldX = 0;
 let touchStartWorldY = 0;
 
-// РАСЧЕТ РАССТОЯНИЙ
-const lineSpacing = vertLineLength / (numLines - 1);
-const halfSpacing = lineSpacing / 2;
-const smallSpacing = lineSpacing / 10;
+// Расчет расстояний
+const unitSpacing = worldLength / (numLines - 1);
+const halfSpacing = unitSpacing / 2;
+const smallSpacing = unitSpacing / 10;
 
-// Функция для вычисления расстояния между двумя точками касания
+// Функции для мультитача
 function getTouchDistance(touches) {
   const dx = touches[0].clientX - touches[1].clientX;
   const dy = touches[0].clientY - touches[1].clientY;
   return Math.sqrt(dx * dx + dy * dy);
 }
 
-// Функция для вычисления угла между двумя точками касания
 function getTouchAngle(touches) {
   const dx = touches[0].clientX - touches[1].clientX;
   const dy = touches[0].clientY - touches[1].clientY;
   return Math.atan2(dy, dx);
 }
 
-// ОБРАБОТКА КАСАНИЙ (умный мультитач)
+// Обработка касаний
 canvas.addEventListener('touchstart', (e) => {
   e.preventDefault();
   
   if (e.touches.length === 2) {
-    // Начало жеста двумя пальцами - запоминаем ВСЕ параметры
     const rect = canvas.getBoundingClientRect();
     const touch1 = e.touches[0];
     const touch2 = e.touches[1];
@@ -207,17 +213,15 @@ canvas.addEventListener('touchstart', (e) => {
     touchStartCenterX = (touch1.clientX + touch2.clientX) / 2 - rect.left;
     touchStartCenterY = (touch1.clientY + touch2.clientY) / 2 - rect.top;
     touchStartScale = scale;
-    touchStartAngleSystem = angle;
+    touchStartRapidity = rapidity;
     touchStartOffsetX = offsetX;
     touchStartOffsetY = offsetY;
     
-    // Вычисляем мировые координаты центра жеста
     touchStartWorldX = (touchStartCenterX - touchStartOffsetX) / touchStartScale;
     touchStartWorldY = (touchStartCenterY - touchStartOffsetY) / touchStartScale;
     
-    dragging = false; // Отключаем обычное перетаскивание
+    dragging = false;
   } else if (e.touches.length === 1) {
-    // Начало перетаскивания одним пальцем
     dragging = true;
     lastX = e.touches[0].clientX;
   }
@@ -227,7 +231,6 @@ canvas.addEventListener('touchmove', (e) => {
   e.preventDefault();
   
   if (e.touches.length === 2 && touchStartDistance !== null && touchStartDistance > 0) {
-    // Обработка умного жеста двумя пальцами: ЗУМ + ПОВОРОТ + ПЕРЕМЕЩЕНИЕ
     const rect = canvas.getBoundingClientRect();
     const touch1 = e.touches[0];
     const touch2 = e.touches[1];
@@ -237,39 +240,31 @@ canvas.addEventListener('touchmove', (e) => {
     const currentCenterX = (touch1.clientX + touch2.clientX) / 2 - rect.left;
     const currentCenterY = (touch1.clientY + touch2.clientY) / 2 - rect.top;
     
-    // 1. МАСШТАБИРОВАНИЕ (зум)
+    // Масштабирование
     const zoomFactor = currentDistance / touchStartDistance;
     const newScale = Math.max(0.1, Math.min(5, touchStartScale * zoomFactor));
     
-    // 2. ПОВОРОТ СИСТЕМЫ (реверс для интуитивности)
+    // Поворот/быстрота
     const angleDelta = currentAngle - touchStartAngle;
-    let newAngle = touchStartAngleSystem - angleDelta * 0.8; // Реверс
+    let newRapidity = touchStartRapidity - angleDelta * 0.5;
     
-    // Ограничение угла
-    newAngle = Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, newAngle));
+    // Ограничение быстроты
+    newRapidity = Math.max(-MAX_RAPIDITY, Math.min(MAX_RAPIDITY, newRapidity));
     
-    // 3. ПЕРЕМЕЩЕНИЕ (панорамирование) с учётом зума
-    // Вычисляем новые offset так, чтобы точка под начальным центром жеста
-    // оставалась под текущим центром жеста
+    // Перемещение
     const newOffsetX = currentCenterX - touchStartWorldX * newScale;
     const newOffsetY = currentCenterY - touchStartWorldY * newScale;
     
-    // Применяем все изменения
     scale = newScale;
-    angle = newAngle;
+    rapidity = newRapidity;
     offsetX = newOffsetX;
     offsetY = newOffsetY;
     
     updateInfo();
   } else if (e.touches.length === 1 && dragging) {
-    // Перетаскивание одним пальцем - ТОЛЬКО ПОВОРОТ
     const dx = e.touches[0].clientX - lastX;
-    // РЕВЕРС: меняем знак на противоположный
-    angle += dx * 0.01;
-    
-    // Ограничение угла
-    angle = Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, angle));
-    
+    rapidity += dx * 0.01;
+    rapidity = Math.max(-MAX_RAPIDITY, Math.min(MAX_RAPIDITY, rapidity));
     lastX = e.touches[0].clientX;
     updateInfo();
   }
@@ -283,7 +278,7 @@ canvas.addEventListener('touchend', (e) => {
   }
 });
 
-// ОБРАБОТКА МЫШИ
+// Обработка мыши
 canvas.addEventListener("pointerdown", e => {
   dragging = true;
   lastX = e.clientX;
@@ -292,12 +287,8 @@ canvas.addEventListener("pointerdown", e => {
 canvas.addEventListener("pointermove", e => {
   if(dragging){
     const dx = e.clientX - lastX;
-    // РЕВЕРС: меняем знак на противоположный
-    angle += dx * 0.01;
-    
-    // Ограничение угла
-    angle = Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, angle));
-    
+    rapidity += dx * 0.01;
+    rapidity = Math.max(-MAX_RAPIDITY, Math.min(MAX_RAPIDITY, rapidity));
     lastX = e.clientX;
     updateInfo();
   }
@@ -329,11 +320,12 @@ canvas.addEventListener("wheel", e => {
   offsetY = mouseY - worldY * scale;
 });
 
-// Кнопка негатива/светлого режима
-document.getElementById('negBtn').addEventListener('click', () => {
-  darkMode = !darkMode;
-  document.body.classList.toggle('light-mode', !darkMode);
-  document.getElementById('negBtn').textContent = darkMode ? '☀' : '🌙';
+// Кнопка переключения режима
+document.getElementById('switchMode').addEventListener('click', () => {
+  isHyperbolic = !isHyperbolic;
+  document.getElementById('modeIndicator').textContent = isHyperbolic ? 'Hyperbolic' : 'Euclidean';
+  document.getElementById('rapidityValue').textContent = isHyperbolic ? 'φ' : 'γ';
+  updateInfo();
 });
 
 // Кнопка сброса масштаба
@@ -341,14 +333,14 @@ document.getElementById('zoomReset').addEventListener('click', () => {
   scale = 0.3;
   offsetX = canvas.width/2;
   offsetY = canvas.height/2;
+  rapidity = 0;
+  updateInfo();
 });
 
 // Полноэкранный режим
 document.getElementById('fullscreen').addEventListener('click', () => {
   if (!document.fullscreenElement) {
-    document.documentElement.requestFullscreen().catch(err => {
-      console.error(`Fullscreen error: ${err.message}`);
-    });
+    document.documentElement.requestFullscreen();
   } else {
     document.exitFullscreen();
   }
@@ -356,66 +348,38 @@ document.getElementById('fullscreen').addEventListener('click', () => {
 
 // Обновление информации
 function updateInfo() {
-  // v/c = sin(angle) для простой визуализации
-  const velocity = Math.sin(angle);
+  const β = Math.tanh(rapidity);
+  const γ = Math.cosh(rapidity);
   
   // Форматируем скорость
-  let velocityStr;
-  if (Math.abs(velocity) < 0.0001) {
-    velocityStr = "0.000c";
+  let speedStr;
+  if (Math.abs(β) < 0.0001) {
+    speedStr = "0.000";
+  } else if (Math.abs(rapidity) >= MAX_RAPIDITY - 0.0000001) {
+    const maxβ = Math.tanh(MAX_RAPIDITY);
+    speedStr = maxβ.toFixed(12);
   } else {
-    // При максимальном угле используем вычисленную скорость для γ=1,000,000
-    const absV = Math.abs(velocity);
-    if (Math.abs(Math.abs(angle) - MAX_ANGLE) < 0.0000001) {
-      // При максимальном угле показываем точное значение
-      velocityStr = TARGET_V.toFixed(12) + "c";
-    } else if (absV > 0.999999) {
-      velocityStr = absV.toFixed(12) + "c";
-    } else if (absV > 0.999) {
-      velocityStr = absV.toFixed(9) + "c";
-    } else if (absV > 0.99) {
-      velocityStr = absV.toFixed(6) + "c";
+    speedStr = Math.abs(β).toFixed(3);
+  }
+  if (β < 0) speedStr = "-" + speedStr;
+  
+  // Форматируем быстроту или γ
+  let rapidityStr;
+  if (isHyperbolic) {
+    if (Math.abs(rapidity) < 0.0001) {
+      rapidityStr = "0.000";
+    } else if (Math.abs(rapidity) >= MAX_RAPIDITY - 0.0000001) {
+      rapidityStr = MAX_RAPIDITY.toFixed(3);
     } else {
-      velocityStr = absV.toFixed(3) + "c";
+      rapidityStr = Math.abs(rapidity).toFixed(3);
     }
-    if (velocity < 0) velocityStr = "-" + velocityStr;
-  }
-  
-  // Вычисляем γ
-  let gamma = 1;
-  const v = Math.abs(velocity);
-  if (v < 0.999999999999) {
-    gamma = 1 / Math.sqrt(1 - v * v);
+    if (rapidity < 0) rapidityStr = "-" + rapidityStr;
   } else {
-    gamma = TARGET_GAMMA; // Максимальное значение
+    rapidityStr = γ.toFixed(3);
   }
   
-  // Форматируем γ
-  let gammaStr;
-  if (Math.abs(Math.abs(angle) - MAX_ANGLE) < 0.0000001) {
-    // При максимальном угле показываем точное значение
-    gammaStr = TARGET_GAMMA.toFixed(3);
-  } else if (gamma >= 1000) {
-    gammaStr = gamma.toFixed(3);
-  } else {
-    gammaStr = gamma.toFixed(3);
-  }
-  
-  document.getElementById('speedValue').textContent = velocityStr;
-  document.getElementById('gammaValue').textContent = gammaStr;
-  
-  // Цвет скорости
-  const speedValue = document.getElementById('speedValue');
-  const absV = Math.abs(velocity);
-  if (absV < 0.3) {
-    speedValue.style.color = darkMode ? '#0f0' : '#080';
-  } else if (absV < 0.7) {
-    speedValue.style.color = darkMode ? '#ff0' : '#880';
-  } else if (absV < 0.95) {
-    speedValue.style.color = darkMode ? '#f80' : '#c60';
-  } else {
-    speedValue.style.color = darkMode ? '#f00' : '#c00';
-  }
+  document.getElementById('speedValue').textContent = speedStr;
+  document.getElementById('rapidityValue').textContent = rapidityStr;
 }
 
 function resize() {
@@ -427,11 +391,11 @@ function resize() {
 window.addEventListener("resize", resize);
 resize();
 
-// Функция преобразования мировых координат в экранные
+// Преобразование мировых координат в экранные
 function toScreen(x, y) {
   return {
     x: x * scale + offsetX,
-    y: y * scale + offsetY
+    y: -y * scale + offsetY // Обратный знак Y для правильной ориентации
   };
 }
 
@@ -454,40 +418,22 @@ function drawLine(x1, y1, x2, y2, darkColor, lightColor, width) {
 }
 
 // Функция рисования отметки
-function drawMark(px, py, dirX, dirY, length, darkColor, lightColor, width, style = "solid") {
+function drawMark(px, py, dirX, dirY, length, darkColor, lightColor, width) {
   const p = toScreen(px, py);
   const d = toScreen(px + dirX * length/2, py + dirY * length/2);
   const d2 = toScreen(px - dirX * length/2, py - dirY * length/2);
   
   ctx.strokeStyle = getColor(darkColor, lightColor);
   ctx.lineWidth = width;
-  
-  if (style === "dashed") {
-    ctx.setLineDash([3, 2]);
-  } else {
-    ctx.setLineDash([]);
-  }
-  
   ctx.beginPath();
   ctx.moveTo(d2.x, d2.y);
   ctx.lineTo(d.x, d.y);
   ctx.stroke();
-  
-  ctx.setLineDash([]);
 }
 
-// Функция рисования точки
-function drawPoint(px, py, radius, darkColor, lightColor) {
-  const p = toScreen(px, py);
-  ctx.fillStyle = getColor(darkColor, lightColor);
-  ctx.beginPath();
-  ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
-  ctx.fill();
-}
-
-// Функция рисования текста (только при достаточно крупном масштабе)
+// Функция рисования текста
 function drawText(text, px, py, darkColor, lightColor, fontSize = 10, align = "center") {
-  if (scale < 0.5) return;
+  if (scale < 0.3) return;
   
   const p = toScreen(px, py);
   ctx.font = `${fontSize}px Arial`;
@@ -497,182 +443,234 @@ function drawText(text, px, py, darkColor, lightColor, fontSize = 10, align = "c
   ctx.fillText(text, p.x, p.y);
 }
 
-function draw() {
-  // Очистка с учётом режима
-  if (darkMode) {
-    ctx.fillStyle = "#000833";
-  } else {
-    ctx.fillStyle = "#fff";
+// Функция рисования гиперболы (линии постоянного интервала)
+function drawHyperbola(a, darkColor, lightColor, width = 1) {
+  ctx.strokeStyle = getColor(darkColor, lightColor);
+  ctx.lineWidth = width;
+  ctx.beginPath();
+  
+  // Верхняя ветвь
+  for(let t = -10; t <= 10; t += 0.1) {
+    const x = a * Math.sinh(t);
+    const y = a * Math.cosh(t);
+    const p = toScreen(x, y);
+    if (t === -10) {
+      ctx.moveTo(p.x, p.y);
+    } else {
+      ctx.lineTo(p.x, p.y);
+    }
   }
+  
+  // Нижняя ветвь
+  for(let t = -10; t <= 10; t += 0.1) {
+    const x = a * Math.sinh(t);
+    const y = -a * Math.cosh(t);
+    const p = toScreen(x, y);
+    if (t === -10) {
+      ctx.moveTo(p.x, p.y);
+    } else {
+      ctx.lineTo(p.x, p.y);
+    }
+  }
+  
+  ctx.stroke();
+}
+
+function draw() {
+  // Очистка
+  ctx.fillStyle = darkMode ? "#000833" : "#fff";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   
   const cx = 0;
   const cy = 0;
-
-  const cosA = Math.cos(angle);
-  const sinA = Math.sin(angle);
-
-  // --- ГОРИЗОНТАЛЬНАЯ ОСЬ (лабораторная система) ---
-  drawLine(-vertLineLength, cy, vertLineLength, cy, "#0ff", "#08f", 1);
   
-  // КРЕСТ (движущаяся система) - ПОВОРАЧИВАЕТСЯ
-  // ИСПРАВЛЕНО: правильное направление оси времени
-  const ctX0 = cx - sinA * vertLineLength/2;
-  const ctY0 = cy - cosA * vertLineLength/2;
-  const ctX1 = cx + sinA * vertLineLength/2;
-  const ctY1 = cy + cosA * vertLineLength/2;
-
-  const xX0 = cx - cosA * vertLineLength/2;
-  const xY0 = cy + sinA * vertLineLength/2;
-  const xX1 = cx + cosA * vertLineLength/2;
-  const xY1 = cy - sinA * vertLineLength/2;
-
-  // ct′ (голубая) - наклонная ось времени движущейся системы
-  drawLine(ctX0, ctY0, ctX1, ctY1, "#0ff", "#08f", 1);
-
-  // x′ (СЕРАЯ) - наклонная пространственная ось движущейся системы
-  drawLine(xX0, xY0, xX1, xY1, "#888", "#666", 1);
-
-  // ВЕКТОРЫ ДЛЯ ОСЕЙ
-  const ctDirX = ctX1 - ctX0;
-  const ctDirY = ctY1 - ctY0;
-  const ctLength = Math.sqrt(ctDirX*ctDirX + ctDirY*ctDirY);
-  const ctUnitX = ctDirX / ctLength;
-  const ctUnitY = ctDirY / ctLength;
-  const ctPerpX = -ctUnitY;
-  const ctPerpY = ctUnitX;
+  const β = Math.tanh(rapidity);
+  const γ = Math.cosh(rapidity);
   
-  const xDirX = xX1 - xX0;
-  const xDirY = xY1 - xY0;
-  const xLength = Math.sqrt(xDirX*xDirX + xDirY*xDirY);
-  const xUnitX = xDirX / xLength;
-  const xUnitY = xDirY / xLength;
-  const xPerpX = -xUnitY;
-  const xPerpY = xUnitX;
+  // --- ЛАБОРАТОРНАЯ СИСТЕМА (ct, x) ---
   
-  // ОТМЕТКИ И ЦИФРЫ НА ГОЛУБОЙ ОСИ (ct′)
-  for(let sec = 1; sec <= secondsPerSide; sec++) {
-    const distance = sec * lineSpacing;
+  // Горизонтальная ось x (лабораторная)
+  drawLine(-worldLength, cy, worldLength, cy, "#888", "#666", 1);
+  
+  // Вертикальная ось ct (лабораторная)
+  drawLine(cx, -worldLength, cx, worldLength, "#888", "#666", 1);
+  
+  // Линии светового конуса (45°)
+  drawLine(-worldLength, -worldLength, worldLength, worldLength, "#f80", "#c60", 0.5);
+  drawLine(-worldLength, worldLength, worldLength, -worldLength, "#f80", "#c60", 0.5);
+  
+  // --- ДВИЖУЩАЯСЯ СИСТЕМА (ct', x') ---
+  
+  if (isHyperbolic) {
+    // Гиперболическая геометрия
     
-    // БОЛЬШИЕ ОТМЕТКИ (1.0 сек)
-    const bigX1 = distance * ctUnitX;
-    const bigY1 = distance * ctUnitY;
-    drawMark(bigX1, bigY1, ctPerpX, ctPerpY, 14, "#0ff", "#08f", 1.5);
-    // Цифры на голубой оси (только при масштабе > 0.5)
-    if (scale > 0.5) {
-      // ПРОСТО МЕНЯЕМ ТЕКСТ МЕСТАМИ: здесь теперь отрицательные числа
-      drawText((-sec).toString(), 
-               bigX1 + ctPerpX * 15,
-               bigY1 + ctPerpY * 15, 
-               "#0ff", "#08f", 10);
+    // Преобразование Лоренца:
+    // ct' = γ(ct - βx)
+    // x' = γ(x - βct)
+    
+    // Ось ct' (где x' = 0): x = β ct
+    const ctPrimeSlope = β;
+    const ctPrimeX1 = worldLength;
+    const ctPrimeY1 = ctPrimeSlope * worldLength;
+    const ctPrimeX2 = -worldLength;
+    const ctPrimeY2 = ctPrimeSlope * -worldLength;
+    
+    // Ось x' (где ct' = 0): ct = β x
+    const xPrimeSlope = 1/β;
+    const xPrimeX1 = worldLength;
+    const xPrimeY1 = xPrimeSlope * worldLength;
+    const xPrimeX2 = -worldLength;
+    const xPrimeY2 = xPrimeSlope * -worldLength;
+    
+    // Рисуем оси движущейся системы
+    drawLine(ctPrimeX2, ctPrimeY2, ctPrimeX1, ctPrimeY1, "#0ff", "#08f", 1.5); // ct' ось
+    drawLine(xPrimeX2, xPrimeY2, xPrimeX1, xPrimeY1, "#0f0", "#080", 1.5); // x' ось
+    
+    // Гиперболы (линии постоянного интервала)
+    for(let i = 1; i <= 5; i++) {
+      drawHyperbola(i, "#f0f", "#a0a", 0.3);
     }
     
-    const bigX2 = -distance * ctUnitX;
-    const bigY2 = -distance * ctUnitY;
-    drawMark(bigX2, bigY2, ctPerpX, ctPerpY, 14, "#0ff", "#08f", 1.5);
-    if (scale > 0.5) {
-      // ПРОСТО МЕНЯЕМ ТЕКСТ МЕСТАМИ: здесь теперь положительные числа
-      drawText(sec.toString(), 
-               bigX2 - ctPerpX * 15,
-               bigY2 - ctPerpY * 15, 
-               "#0ff", "#08f", 10);
-    }
-    
-    // ОТМЕТКИ 0.5 сек
-    const halfDistance = distance - halfSpacing;
-    const halfX1 = halfDistance * ctUnitX;
-    const halfY1 = halfDistance * ctUnitY;
-    drawMark(halfX1, halfY1, ctPerpX, ctPerpY, 10, "#0aa", "#06a", 1.0, "dashed");
-    
-    const halfX2 = -halfDistance * ctUnitX;
-    const halfY2 = -halfDistance * ctUnitY;
-    drawMark(halfX2, halfY2, ctPerpX, ctPerpY, 10, "#0aa", "#06a", 1.0, "dashed");
-  }
-  
-  // МЕЛКИЕ ОТМЕТКИ (0.1 сек) НА ГОЛУБОЙ ОСИ
-  const smallMarksPerSide = secondsPerSide * 10;
-  for(let tenth = 1; tenth <= smallMarksPerSide; tenth++) {
-    if (tenth % 5 === 0) continue;
-    
-    const distance = tenth * smallSpacing;
-    const smallX1 = distance * ctUnitX;
-    const smallY1 = distance * ctUnitY;
-    
-    drawPoint(smallX1, smallY1, 2, "#099", "#057");
-    
-    const smallX2 = -distance * ctUnitX;
-    const smallY2 = -distance * ctUnitY;
-    drawPoint(smallX2, smallY2, 2, "#099", "#057");
-  }
-
-  // ВЕРТИКАЛЬНЫЕ ЛИНИИ (мировые линии объектов в лабораторной системе)
-  for(let i = -10; i <= 10; i++){ 
-    const t = i / 10; 
-    const px = xX0 + (xX1 - xX0) * (0.5 + t/2); 
-    const py = xY0 + (xY1 - xY0) * (0.5 + t/2);
-    
-    // ВЕРТИКАЛЬНЫЕ ЛИНИИ
-    drawLine(
-      px, py - vertLineLength/2,
-      px, py + vertLineLength/2,
-      "#888", "#666",
-      1
-    );
-    
-    // ОТМЕТКИ И ЦИФРЫ НА ВЕРТИКАЛЬНЫХ ЛИНИЯХ
-    for(let sec = 1; sec <= secondsPerSide; sec++) {
-      const distance = sec * lineSpacing;
+    // Отметки на оси ct'
+    for(let t = -unitsPerSide; t <= unitsPerSide; t++) {
+      if (t === 0) continue;
       
-      // БОЛЬШИЕ ОТМЕТКИ (1.0 сек) - ВВЕРХ
-      const upX = px;
-      const upY = py - distance;
-      drawMark(upX, upY, 1, 0, 12, "#888", "#666", 1.5);
-      // Цифры на вертикальных линиях (только при масштабе > 0.5)
-      if (scale > 0.5) {
-        drawText(sec.toString(), upX - 8, upY, "#888", "#666", 10, "right");
+      // В системе ct' координаты (ct' = t, x' = 0)
+      // Преобразуем в лабораторные: ct = γt, x = γβt
+      const ct = γ * t;
+      const x = γ * β * t;
+      
+      // Рисуем отметку
+      const perpX = -ctPrimeSlope;
+      const perpY = 1;
+      const length = Math.sqrt(perpX*perpX + perpY*perpY);
+      const perpUnitX = perpX / length;
+      const perpUnitY = perpY / length;
+      
+      drawMark(x, ct, perpUnitX, perpUnitY, 10, "#0ff", "#08f", 1);
+      
+      // Подпись
+      if (scale > 0.4) {
+        drawText(t.toString(), 
+                 x + perpUnitX * 12,
+                 ct + perpUnitY * 12,
+                 "#0ff", "#08f", 10);
+      }
+    }
+    
+    // Отметки на оси x'
+    for(let xp = -unitsPerSide; xp <= unitsPerSide; xp++) {
+      if (xp === 0) continue;
+      
+      // В системе x' координаты (ct' = 0, x' = xp)
+      // Преобразуем в лабораторные: ct = γβxp, x = γxp
+      const ct = γ * β * xp;
+      const x = γ * xp;
+      
+      // Рисуем отметку
+      const perpX = -xPrimeSlope;
+      const perpY = 1;
+      const length = Math.sqrt(perpX*perpX + perpY*perpY);
+      const perpUnitX = perpX / length;
+      const perpUnitY = perpY / length;
+      
+      drawMark(x, ct, perpUnitX, perpUnitY, 10, "#0f0", "#080", 1);
+      
+      // Подпись
+      if (scale > 0.4) {
+        drawText(xp.toString(), 
+                 x + perpUnitX * 12,
+                 ct + perpUnitY * 12,
+                 "#0f0", "#080", 10);
+      }
+    }
+    
+  } else {
+    // Евклидова геометрия (старая схема)
+    const angle = Math.asin(β);
+    const cosA = Math.cos(angle);
+    const sinA = Math.sin(angle);
+    
+    // Крест движущейся системы
+    const ctX0 = cx - sinA * worldLength/2;
+    const ctY0 = cy - cosA * worldLength/2;
+    const ctX1 = cx + sinA * worldLength/2;
+    const ctY1 = cy + cosA * worldLength/2;
+
+    const xX0 = cx - cosA * worldLength/2;
+    const xY0 = cy + sinA * worldLength/2;
+    const xX1 = cx + cosA * worldLength/2;
+    const xY1 = cy - sinA * worldLength/2;
+
+    drawLine(ctX0, ctY0, ctX1, ctY1, "#0ff", "#08f", 1.5);
+    drawLine(xX0, xY0, xX1, xY1, "#0f0", "#080", 1.5);
+    
+    // Векторы для осей
+    const ctDirX = ctX1 - ctX0;
+    const ctDirY = ctY1 - ctY0;
+    const ctLength = Math.sqrt(ctDirX*ctDirX + ctDirY*ctDirY);
+    const ctUnitX = ctDirX / ctLength;
+    const ctUnitY = ctDirY / ctLength;
+    const ctPerpX = -ctUnitY;
+    const ctPerpY = ctUnitX;
+    
+    // Отметки на голубой оси (ct')
+    for(let sec = 1; sec <= unitsPerSide; sec++) {
+      const distance = sec * unitSpacing;
+      
+      const bigX1 = distance * ctUnitX;
+      const bigY1 = distance * ctUnitY;
+      drawMark(bigX1, bigY1, ctPerpX, ctPerpY, 10, "#0ff", "#08f", 1);
+      
+      if (scale > 0.4) {
+        drawText(sec.toString(), 
+                 bigX1 - ctPerpX * 12,
+                 bigY1 - ctPerpY * 12,
+                 "#0ff", "#08f", 10);
       }
       
-      // БОЛЬШИЕ ОТМЕТКИ (1.0 сек) - ВНИЗ
-      const downX = px;
-      const downY = py + distance;
-      drawMark(downX, downY, 1, 0, 12, "#888", "#666", 1.5);
-      if (scale > 0.5) {
-        drawText((-sec).toString(), downX + 8, downY, "#888", "#666", 10, "left");
+      const bigX2 = -distance * ctUnitX;
+      const bigY2 = -distance * ctUnitY;
+      drawMark(bigX2, bigY2, ctPerpX, ctPerpY, 10, "#0ff", "#08f", 1);
+      
+      if (scale > 0.4) {
+        drawText((-sec).toString(), 
+                 bigX2 + ctPerpX * 12,
+                 bigY2 + ctPerpY * 12,
+                 "#0ff", "#08f", 10);
       }
-      
-      // ОТМЕТКИ 0.5 сек
-      const halfDistance = distance - halfSpacing;
-      const halfUpX = px;
-      const halfUpY = py - halfDistance;
-      drawMark(halfUpX, halfUpY, 1, 0, 9, "#888", "#666", 1.0, "dashed");
-      
-      const halfDownX = px;
-      const halfDownY = py + halfDistance;
-      drawMark(halfDownX, halfDownY, 1, 0, 9, "#888", "#666", 1.0, "dashed");
-    }
-    
-    // МЕЛКИЕ ОТМЕТКИ (0.1 сек) на вертикальных линиях
-    for(let tenth = 1; tenth <= secondsPerSide * 10; tenth++) {
-      if (tenth % 5 === 0) continue;
-      
-      const distance = tenth * smallSpacing;
-      const upX = px;
-      const upY = py - distance;
-      
-      drawPoint(upX, upY, 1.5, "#888", "#666");
-      
-      const downX = px;
-      const downY = py + distance;
-      drawPoint(downX, downY, 1.5, "#888", "#666");
-    }
-    
-    // Подписи для вертикальных линий (расстояния)
-    if (scale > 0.7 && i !== 0) {
-      drawText(i.toString(), px, py + 20, "#888", "#666", 10);
     }
   }
-
-  // Центр креста (начало координат)
+  
+  // Сетка лабораторной системы
+  for(let i = -10; i <= 10; i++) {
+    // Вертикальные линии (постоянное x)
+    if (i !== 0) {
+      drawLine(i * unitSpacing, -worldLength, i * unitSpacing, worldLength, "#444", "#ccc", 0.2);
+    }
+    
+    // Горизонтальные линии (постоянное ct)
+    if (i !== 0) {
+      drawLine(-worldLength, i * unitSpacing, worldLength, i * unitSpacing, "#444", "#ccc", 0.2);
+    }
+  }
+  
+  // Подписи осей
+  if (scale > 0.5) {
+    drawText("ct", 0, worldLength + 30, "#888", "#666", 12);
+    drawText("x", worldLength + 30, 0, "#888", "#666", 12);
+    
+    if (isHyperbolic) {
+      drawText("ct'", γ * 3, γ * β * 3 + 15, "#0ff", "#08f", 12);
+      drawText("x'", γ * 3, γ * β * 3 - 15, "#0f0", "#080", 12);
+    } else {
+      const angle = Math.asin(β);
+      drawText("ct'", Math.sin(angle) * 3, Math.cos(angle) * 3 + 15, "#0ff", "#08f", 12);
+      drawText("x'", Math.cos(angle) * 3, -Math.sin(angle) * 3 - 15, "#0f0", "#080", 12);
+    }
+  }
+  
+  // Центр (начало координат)
   const center = toScreen(0, 0);
   ctx.fillStyle = getColor("#fff", "#000");
   ctx.beginPath();
