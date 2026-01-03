@@ -1,1 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SR Visualization</title>
+<style>
+  body { margin:0; background:#111; overflow:hidden; touch-action: none; font-family: Arial, sans-serif; }
+  canvas { display:block; }
+  /* Кнопки управления */
+  .controls {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    display: flex;
+    gap: 8px;
+    z-index: 100;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    max-width: 200px;
+  }
+  .btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 5px;
+    background: rgba(0,0,0,0.7);
+    border: 1px solid rgba(255,255,255,0.3);
+    color: white;
+    font-size: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+    transition: all 0.2s;
+  }
+  .btn:hover {
+    background: rgba(50,50,50,0.9);
+  }
+  .btn:active {
+    transform: scale(0.95);
+  }
+  /* Панель информации */
+  .info-panel {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background: rgba(0,0,0,0.7);
+    color: white;
+    padding: 10px 15px;
+    border-radius: 5px;
+    font-size: 14px;
+    border: 1px solid rgba(255,255,255,0.2);
+    z-index: 100;
+    min-width: 200px;
+  }
+  .info-item {
+    margin: 5px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .info-label {
+    color: #aaa;
+  }
+  .info-value {
+    font-weight: bold;
+    font-family: 'Courier New', monospace;
+  }
+  .speed-value {
+    color: #fa0;
+    font-size: 16px;
+  }
+  .gamma-value {
+    color: #0ff;
+    font-size: 16px;
+  }
+  
+  /* Стили для светлого режима */
+  body.light-mode {
+    background: #fff;
+  }
+  body.light-mode .btn {
+    background: rgba(255,255,255,0.7);
+    border: 1px solid rgba(0,0,0,0.3);
+    color: #000;
+  }
+  body.light-mode .info-panel {
+    background: rgba(255,255,255,0.9);
+    color: #000;
+    border: 1px solid rgba(0,0,0,0.2);
+  }
+  body.light-mode .info-label {
+    color: #666;
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
 
+<!-- Панель информации -->
+<div class="info-panel" id="infoPanel">
+  <div class="info-item">
+    <span class="info-label">Speed:</span>
+    <span class="info-value speed-value" id="speedValue">0.000c</span>
+  </div>
+  <div class="info-item">
+    <span class="info-label">γ:</span>
+    <span class="info-value gamma-value" id="gammaValue">1.000</span>
+  </div>
+</div>
+
+<!-- Кнопки управления -->
+<div class="controls">
+  <button class="btn" id="negBtn" title="Negative/Invert">☀</button>
+  <button class="btn" id="zoomIn" title="Zoom in">+</button>
+  <button class="btn" id="zoomOut" title="Zoom out">-</button>
+  <button class="btn" id="zoomReset" title="Reset scale">↻</button>
+  <button class="btn" id="fullscreen" title="Fullscreen mode">⛶</button>
+</div>
+
+<script>
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+
+// Параметры визуализации
+let angle = 0; // угол поворота креста
+let dragging = false;
+let lastX = 0;
+let scale = 0.3;
+let offsetX = 0, offsetY = 0;
+let darkMode = true;
+
+// ПАРАМЕТРЫ (увеличенные)
+const numLines = 21; // 10 с каждой стороны + центральная = 21
+const secondsPerSide = 10; // было 5, теперь 10
+const vertLineLength = 3000;
+
+// ТARGET GAMMA = 1,000,000
+const TARGET_GAMMA = 1000000.000;
+// Вычисляем скорость для γ = 1,000,000
+const TARGET_V = Math.sqrt(1 - 1/(TARGET_GAMMA * TARGET_GAMMA));
+// Вычисляем угол для этой скорости (v/c = sin(angle))
+const MAX_ANGLE = Math.asin(TARGET_V);
+
+console.log(`Target γ: ${TARGET_GAMMA}`);
+console.log(`Target v/c: ${TARGET_V}`);
+console.log(`Max angle (rad): ${MAX_ANGLE}`);
+console.log(`Max angle (deg): ${MAX_ANGLE * 180/Math.PI}`);
+
+// МУЛЬТИТАЧ ПЕРЕМЕННЫЕ
+let touchStartDistance = null;
+let touchStartAngle = null;
+let touchStartScale = 0.3;
+let touchStartRotation = 0;
+let initialTouches = [];
+
+// РАСЧЕТ РАССТОЯНИЙ
+const lineSpacing = vertLineLength / (numLines - 1);
+const halfSpacing = lineSpacing / 2;
+const smallSpacing = lineSpacing / 10;
+
+// Функция для вычисления расстояния между двумя точками касания
+function getTouchDistance(touches) {
+  const dx = touches[0].clientX - touches[1].clientX;
+  const dy = touches[0].clientY - touches[1].clientY;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+// Функция для вычисления угла между двумя точками касания
+function getTouchAngle(touches) {
+  const dx = touches[0].clientX - touches[1].clientX;
+  const dy = touches[0].clientY - touches[1].clientY;
+  return Math.atan2(dy, dx);
+}
+
+// ОБРАБОТКА КАСАНИЙ (мультитач)
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  
+  if (e.touches.length === 2) {
+    // Начало жеста двумя пальцами
+    touchStartDistance = getTouchDistance(e.touches);
+    touchStartAngle = getTouchAngle(e.touches);
+    touchStartScale = scale;
+    touchStartRotation = angle;
+    initialTouches = Array.from(e.touches);
+  } else if (e.touches.length === 1) {
+    // Начало перетаскивания одним пальцем
+    dragging = true;
+    lastX = e.touches[0].clientX;
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  
+  if (e.touches.length === 2 && touchStartDistance !== null && touchStartDistance > 0) {
+    // Обработка жеста двумя пальцами
+    const currentDistance = getTouchDistance(e.touches);
+    const currentAngle = getTouchAngle(e.touches);
+    
+    // Pinch-to-zoom
+    if (touchStartDistance > 0) {
+      const zoomFactor = currentDistance / touchStartDistance;
+      let newScale = touchStartScale * zoomFactor;
+      scale = Math.max(0.1, Math.min(5, newScale));
+    }
+    
+    // Двухпальцевый поворот
+    if (touchStartAngle !== null) {
+      const angleDelta = currentAngle - touchStartAngle;
+      let newAngle = touchStartRotation + angleDelta * 0.8; // Коэффициент для плавности
+      
+      // Ограничение угла
+      newAngle = Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, newAngle));
+      angle = newAngle;
+    }
+    
+    updateInfo();
+  } else if (e.touches.length === 1 && dragging) {
+    // Перетаскивание одним пальцем
+    const dx = e.touches[0].clientX - lastX;
+    // РЕВЕРС: меняем знак на противоположный
+    let newAngle = angle + dx * 0.01;
+    
+    // Ограничение угла
+    newAngle = Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, newAngle));
+    angle = newAngle;
+    
+    lastX = e.touches[0].clientX;
+    updateInfo();
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchend', (e) => {
+  dragging = false;
+  if (e.touches.length < 2) {
+    touchStartDistance = null;
+    touchStartAngle = null;
+    initialTouches = [];
+  }
+});
+
+// ОБРАБОТКА МЫШИ
+canvas.addEventListener("pointerdown", e => {
+  dragging = true;
+  lastX = e.clientX;
+});
+
+canvas.addEventListener("pointermove", e => {
+  if(dragging){
+    const dx = e.clientX - lastX;
+    // РЕВЕРС: меняем знак на противоположный
+    let newAngle = angle + dx * 0.01;
+    
+    // Ограничение угла
+    newAngle = Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, newAngle));
+    angle = newAngle;
+    
+    lastX = e.clientX;
+    updateInfo();
+  }
+});
+
+canvas.addEventListener("pointerup", e => dragging = false);
+canvas.addEventListener("pointerleave", e => dragging = false);
+
+// Масштабирование колесом мыши
+canvas.addEventListener("wheel", e => {
+  e.preventDefault();
+  const zoomFactor = 1.1;
+  const rect = canvas.getBoundingClientRect();
+  const mouseX = e.clientX - rect.left;
+  const mouseY = e.clientY - rect.top;
+  
+  const worldX = (mouseX - offsetX) / scale;
+  const worldY = (mouseY - offsetY) / scale;
+  
+  if (e.deltaY < 0) {
+    scale *= zoomFactor;
+  } else {
+    scale /= zoomFactor;
+  }
+  
+  scale = Math.max(0.1, Math.min(5, scale));
+  
+  offsetX = mouseX - worldX * scale;
+  offsetY = mouseY - worldY * scale;
+});
+
+// Кнопка негатива/светлого режима
+document.getElementById('negBtn').addEventListener('click', () => {
+  darkMode = !darkMode;
+  document.body.classList.toggle('light-mode', !darkMode);
+  document.getElementById('negBtn').textContent = darkMode ? '☀' : '🌙';
+});
+
+// Кнопки масштабирования
+document.getElementById('zoomIn').addEventListener('click', () => {
+  scale = Math.min(5, scale * 1.2);
+  offsetX = canvas.width/2;
+  offsetY = canvas.height/2;
+});
+
+document.getElementById('zoomOut').addEventListener('click', () => {
+  scale = Math.max(0.1, scale / 1.
