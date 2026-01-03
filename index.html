@@ -70,6 +70,12 @@
     color: #fa0;
     font-size: 16px;
   }
+  .gamma-value {
+    color: #0ff;
+  }
+  .rapidity-value {
+    color: #8f8;
+  }
   
   /* Стили для светлого режима */
   body.light-mode {
@@ -101,7 +107,11 @@
   </div>
   <div class="info-item">
     <span class="info-label">γ (гамма):</span>
-    <span class="info-value" id="gammaValue">1.000</span>
+    <span class="info-value gamma-value" id="gammaValue">1.000</span>
+  </div>
+  <div class="info-item">
+    <span class="info-label">Быстрота:</span>
+    <span class="info-value rapidity-value" id="rapidityValue">0.000</span>
   </div>
 </div>
 
@@ -118,7 +128,7 @@
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d");
 
-let angle = 0; // Используем угол для вращения (пока не удаляем)
+let angle = 0; // угол от -π/4 до π/4 радиан
 let dragging = false;
 let lastX = 0;
 let scale = 0.3;
@@ -129,6 +139,7 @@ let darkMode = true;
 const numLines = 11; // 5 с каждой стороны + центральная = 11
 const secondsPerSide = 5;
 const vertLineLength = 3000;
+const MAX_ANGLE = Math.PI / 4; // 45 градусов в радианах
 
 // РАСЧЕТ РАССТОЯНИЙ
 const lineSpacing = vertLineLength / (numLines - 1);
@@ -145,6 +156,8 @@ canvas.addEventListener("pointermove", e => {
   if(dragging){
     const dx = e.clientX - lastX;
     angle -= dx * 0.01;
+    // Ограничиваем угол до ±45 градусов
+    angle = Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, angle));
     lastX = e.clientX;
     updateInfo();
   }
@@ -213,18 +226,55 @@ document.getElementById('fullscreen').addEventListener('click', () => {
   }
 });
 
-// Обновление информации
+// Обновление информации (ПРАВИЛЬНО для СТО!)
 function updateInfo() {
-  // Используем угол для вычисления скорости (упрощённо)
-  const velocity = Math.sin(angle) * 0.99; // Ограничиваем 0.99c
+  // Угол в градусах для отображения
+  const angleDeg = (angle * 180 / Math.PI).toFixed(1);
+  
+  // В СТО: v/c = tan(θ) где θ - угол на диаграмме Минковского
+  // При θ = 45°: v/c = tan(45°) = 1, γ = 1/√(1-1) = ∞
+  const velocity = Math.tan(angle); // v/c = tan(θ)
   const velocityPercent = (Math.abs(velocity) * 100).toFixed(1);
-  const gamma = 1 / Math.sqrt(1 - velocity * velocity);
+  
+  // Вычисляем γ с защитой от деления на 0
+  let gamma;
+  if (Math.abs(angle) >= MAX_ANGLE * 0.999) {
+    gamma = Infinity;
+  } else {
+    gamma = 1 / Math.sqrt(1 - velocity * velocity);
+  }
+  
+  // Быстрота (rapidity) = atanh(v/c) = atanh(tan(θ))
+  // При θ → 45°, tan(θ) → 1, atanh(1) → ∞
+  let rapidity;
+  if (Math.abs(velocity) >= 0.999999) {
+    rapidity = Infinity;
+  } else {
+    rapidity = Math.atanh(velocity);
+  }
   
   // Определяем знак скорости
   const sign = velocity >= 0 ? '+' : '-';
   
+  // Обновляем отображение
   document.getElementById('speedValue').textContent = `${sign}${velocityPercent}% c`;
-  document.getElementById('gammaValue').textContent = gamma.toFixed(3);
+  
+  if (gamma === Infinity) {
+    document.getElementById('gammaValue').textContent = '∞';
+    document.getElementById('gammaValue').style.color = darkMode ? '#f00' : '#c00';
+  } else if (gamma > 1000) {
+    document.getElementById('gammaValue').textContent = gamma.toExponential(2);
+    document.getElementById('gammaValue').style.color = darkMode ? '#f80' : '#a60';
+  } else {
+    document.getElementById('gammaValue').textContent = gamma.toFixed(3);
+    document.getElementById('gammaValue').style.color = darkMode ? '#0ff' : '#08f';
+  }
+  
+  if (rapidity === Infinity) {
+    document.getElementById('rapidityValue').textContent = '∞';
+  } else {
+    document.getElementById('rapidityValue').textContent = rapidity.toFixed(3);
+  }
   
   // Цвет скорости
   const speedValue = document.getElementById('speedValue');
@@ -400,7 +450,7 @@ function draw() {
   }
 
   // ВЕРТИКАЛЬНЫЕ ЛИНИИ (11 штук, по 5 с каждой стороны)
-  for(let i = -5; i <= 5; i++){ // -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5
+  for(let i = -5; i <= 5; i++){
     const t = i / 5; 
     const px = xX0 + (xX1 - xX0) * (0.5 + t/2); 
     const py = xY0 + (xY1 - xY0) * (0.5 + t/2);
@@ -478,4 +528,4 @@ updateInfo();
 draw();
 </script>
 </body>
-  </html>
+    </html>
