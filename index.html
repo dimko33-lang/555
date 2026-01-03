@@ -4,23 +4,93 @@
 <meta charset="UTF-8">
 <title>SR Visualization</title>
 <style>
-  /* Существующие стили... */
-  /* Добавим индикатор режима */
-  .mode-indicator {
+  body { margin:0; background:#001122; overflow:hidden; touch-action: none; font-family: Arial, sans-serif; }
+  canvas { display:block; }
+  /* Кнопки управления */
+  .controls {
     position: absolute;
-    bottom: 10px;
+    top: 10px;
+    right: 10px;
+    display: flex;
+    gap: 8px;
+    z-index: 100;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    max-width: 200px;
+  }
+  .btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 5px;
+    background: rgba(0,0,0,0.7);
+    border: 1px solid rgba(255,255,255,0.3);
+    color: white;
+    font-size: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+    transition: all 0.2s;
+  }
+  .btn:hover {
+    background: rgba(50,50,50,0.9);
+  }
+  .btn:active {
+    transform: scale(0.95);
+  }
+  /* Панель информации */
+  .info-panel {
+    position: absolute;
+    top: 10px;
     left: 10px;
     background: rgba(0,0,0,0.7);
     color: white;
-    padding: 5px 10px;
+    padding: 10px 15px;
     border-radius: 5px;
-    font-size: 12px;
+    font-size: 14px;
     border: 1px solid rgba(255,255,255,0.2);
     z-index: 100;
-    display: none;
+    min-width: 200px;
   }
-  .mode-indicator.active {
-    display: block;
+  .info-item {
+    margin: 5px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .info-label {
+    color: #aaa;
+  }
+  .info-value {
+    font-weight: bold;
+    font-family: 'Courier New', monospace;
+  }
+  .speed-value {
+    color: #fa0;
+    font-size: 16px;
+  }
+  .gamma-value {
+    color: #0ff;
+    font-size: 16px;
+  }
+  
+  /* Стили для светлого режима */
+  body.light-mode {
+    background: #fff;
+  }
+  body.light-mode .btn {
+    background: rgba(255,255,255,0.7);
+    border: 1px solid rgba(0,0,0,0.3);
+    color: #000;
+  }
+  body.light-mode .info-panel {
+    background: rgba(255,255,255,0.9);
+    color: #000;
+    border: 1px solid rgba(0,0,0,0.2);
+  }
+  body.light-mode .info-label {
+    color: #666;
   }
 </style>
 </head>
@@ -39,9 +109,6 @@
   </div>
 </div>
 
-<!-- Индикатор режима -->
-<div class="mode-indicator" id="panModeIndicator">Pan Mode (Shift+Drag)</div>
-
 <!-- Кнопки управления -->
 <div class="controls">
   <button class="btn" id="negBtn" title="Negative/Invert">☀</button>
@@ -56,33 +123,36 @@ const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d");
 
 // Параметры визуализации
-let angle = 0;
+let angle = 0; // угол поворота креста
 let dragging = false;
-let panning = false; // НОВОЕ: флаг панорамирования
-let lastX = 0, lastY = 0;
+let lastX = 0;
 let scale = 0.3;
 let offsetX = 0, offsetY = 0;
 let darkMode = true;
 
 // ПАРАМЕТРЫ (увеличенные)
-const numLines = 21;
-const secondsPerSide = 10;
+const numLines = 21; // 10 с каждой стороны + центральная = 21
+const secondsPerSide = 10; // было 5, теперь 10
 const vertLineLength = 3000;
 
 // ТARGET GAMMA = 1,000,000
 const TARGET_GAMMA = 1000000.000;
+// Вычисляем скорость для γ = 1,000,000
 const TARGET_V = Math.sqrt(1 - 1/(TARGET_GAMMA * TARGET_GAMMA));
+// Вычисляем угол для этой скорости (v/c = sin(angle))
 const MAX_ANGLE = Math.asin(TARGET_V);
 
-// МУЛЬТИТАЧ ПЕРЕМЕННЫЕ
+// МУЛЬТИТАЧ ПЕРЕМЕННЫЕ для умного жеста
 let touchStartDistance = null;
 let touchStartAngle = null;
+let touchStartCenterX = 0;
+let touchStartCenterY = 0;
 let touchStartScale = 0.3;
-let touchStartRotation = 0;
-
-// НОВОЕ: переменные для панорамирования на мобильных
-let touchStartPanX = 0, touchStartPanY = 0;
-let touchStartOffsetX = 0, touchStartOffsetY = 0;
+let touchStartAngleSystem = 0;
+let touchStartOffsetX = 0;
+let touchStartOffsetY = 0;
+let touchStartWorldX = 0;
+let touchStartWorldY = 0;
 
 // РАСЧЕТ РАССТОЯНИЙ
 const lineSpacing = vertLineLength / (numLines - 1);
@@ -103,36 +173,32 @@ function getTouchAngle(touches) {
   return Math.atan2(dy, dx);
 }
 
-// НОВОЕ: функция показа/скрытия индикатора режима
-function showModeIndicator(mode) {
-  const indicator = document.getElementById('panModeIndicator');
-  if (mode === 'pan') {
-    indicator.textContent = 'Pan Mode (Shift+Drag)';
-    indicator.classList.add('active');
-  } else if (mode === 'rotate') {
-    indicator.textContent = 'Rotate Mode (Drag)';
-    indicator.classList.add('active');
-    setTimeout(() => indicator.classList.remove('active'), 1000);
-  } else {
-    indicator.classList.remove('active');
-  }
-}
-
-// ОБРАБОТКА КАСАНИЙ (мультитач)
+// ОБРАБОТКА КАСАНИЙ (умный мультитач)
 canvas.addEventListener('touchstart', (e) => {
   e.preventDefault();
   
   if (e.touches.length === 2) {
-    // Начало жеста двумя пальцами
+    // Начало жеста двумя пальцами - запоминаем ВСЕ параметры
+    const rect = canvas.getBoundingClientRect();
+    const touch1 = e.touches[0];
+    const touch2 = e.touches[1];
+    
     touchStartDistance = getTouchDistance(e.touches);
     touchStartAngle = getTouchAngle(e.touches);
+    touchStartCenterX = (touch1.clientX + touch2.clientX) / 2 - rect.left;
+    touchStartCenterY = (touch1.clientY + touch2.clientY) / 2 - rect.top;
     touchStartScale = scale;
-    touchStartRotation = angle;
+    touchStartAngleSystem = angle;
+    touchStartOffsetX = offsetX;
+    touchStartOffsetY = offsetY;
+    
+    // Вычисляем мировые координаты центра жеста
+    touchStartWorldX = (touchStartCenterX - touchStartOffsetX) / touchStartScale;
+    touchStartWorldY = (touchStartCenterY - touchStartOffsetY) / touchStartScale;
+    
+    dragging = false; // Отключаем обычное перетаскивание
   } else if (e.touches.length === 1) {
     // Начало перетаскивания одним пальцем
-    // Для мобильных: по умолчанию вращение
-    // Долгое нажатие можно использовать для панорамирования, но это сложно
-    // Лучше добавить кнопку переключения режима
     dragging = true;
     lastX = e.touches[0].clientX;
   }
@@ -142,25 +208,44 @@ canvas.addEventListener('touchmove', (e) => {
   e.preventDefault();
   
   if (e.touches.length === 2 && touchStartDistance !== null && touchStartDistance > 0) {
-    // Обработка жеста двумя пальцами
+    // Обработка умного жеста двумя пальцами: ЗУМ + ПОВОРОТ + ПЕРЕМЕЩЕНИЕ
+    const rect = canvas.getBoundingClientRect();
+    const touch1 = e.touches[0];
+    const touch2 = e.touches[1];
+    
     const currentDistance = getTouchDistance(e.touches);
     const currentAngle = getTouchAngle(e.touches);
+    const currentCenterX = (touch1.clientX + touch2.clientX) / 2 - rect.left;
+    const currentCenterY = (touch1.clientY + touch2.clientY) / 2 - rect.top;
     
-    // Pinch-to-zoom
+    // 1. МАСШТАБИРОВАНИЕ (зум)
     const zoomFactor = currentDistance / touchStartDistance;
-    scale = Math.max(0.1, Math.min(5, touchStartScale * zoomFactor));
+    const newScale = Math.max(0.1, Math.min(5, touchStartScale * zoomFactor));
     
-    // Двухпальцевый поворот - РЕВЕРС
+    // 2. ПОВОРОТ СИСТЕМЫ (реверс для интуитивности)
     const angleDelta = currentAngle - touchStartAngle;
-    angle = touchStartRotation - angleDelta * 0.8;
+    let newAngle = touchStartAngleSystem - angleDelta * 0.8; // Реверс
     
     // Ограничение угла
-    angle = Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, angle));
+    newAngle = Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, newAngle));
+    
+    // 3. ПЕРЕМЕЩЕНИЕ (панорамирование) с учётом зума
+    // Вычисляем новые offset так, чтобы точка под начальным центром жеста
+    // оставалась под текущим центром жеста
+    const newOffsetX = currentCenterX - touchStartWorldX * newScale;
+    const newOffsetY = currentCenterY - touchStartWorldY * newScale;
+    
+    // Применяем все изменения
+    scale = newScale;
+    angle = newAngle;
+    offsetX = newOffsetX;
+    offsetY = newOffsetY;
     
     updateInfo();
   } else if (e.touches.length === 1 && dragging) {
-    // Перетаскивание одним пальцем - вращение
+    // Перетаскивание одним пальцем - ТОЛЬКО ПОВОРОТ
     const dx = e.touches[0].clientX - lastX;
+    // РЕВЕРС: меняем знак на противоположный
     angle += dx * 0.01;
     
     // Ограничение угла
@@ -173,82 +258,36 @@ canvas.addEventListener('touchmove', (e) => {
 
 canvas.addEventListener('touchend', (e) => {
   dragging = false;
-  panning = false;
   if (e.touches.length < 2) {
     touchStartDistance = null;
     touchStartAngle = null;
   }
 });
 
-// ОБРАБОТКА МЫШИ И КЛАВИАТУРЫ
-let shiftPressed = false;
-
-// Отслеживание клавиши Shift
-window.addEventListener('keydown', (e) => {
-  if (e.key === 'Shift') {
-    shiftPressed = true;
-    showModeIndicator('pan');
-  }
-});
-
-window.addEventListener('keyup', (e) => {
-  if (e.key === 'Shift') {
-    shiftPressed = false;
-    showModeIndicator('rotate');
-  }
-});
-
+// ОБРАБОТКА МЫШИ
 canvas.addEventListener("pointerdown", e => {
-  if (shiftPressed) {
-    // Режим панорамирования
-    panning = true;
-    dragging = false;
-    lastX = e.clientX;
-    lastY = e.clientY;
-    showModeIndicator('pan');
-  } else {
-    // Режим вращения
-    dragging = true;
-    panning = false;
-    lastX = e.clientX;
-    showModeIndicator('rotate');
-  }
+  dragging = true;
+  lastX = e.clientX;
 });
 
 canvas.addEventListener("pointermove", e => {
-  if (dragging && !shiftPressed) {
-    // Вращение
+  if(dragging){
     const dx = e.clientX - lastX;
+    // РЕВЕРС: меняем знак на противоположный
     angle += dx * 0.01;
     
+    // Ограничение угла
     angle = Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, angle));
     
     lastX = e.clientX;
     updateInfo();
-  } else if (panning && shiftPressed) {
-    // Панорамирование
-    const dx = e.clientX - lastX;
-    const dy = e.clientY - lastY;
-    
-    offsetX += dx;
-    offsetY += dy;
-    
-    lastX = e.clientX;
-    lastY = e.clientY;
   }
 });
 
-canvas.addEventListener("pointerup", e => {
-  dragging = false;
-  panning = false;
-});
+canvas.addEventListener("pointerup", e => dragging = false);
+canvas.addEventListener("pointerleave", e => dragging = false);
 
-canvas.addEventListener("pointerleave", e => {
-  dragging = false;
-  panning = false;
-});
-
-// Масштабирование колесом мыши (существующий код)
+// Масштабирование колесом мыши
 canvas.addEventListener("wheel", e => {
   e.preventDefault();
   const zoomFactor = 1.1;
@@ -308,106 +347,20 @@ document.getElementById('fullscreen').addEventListener('click', () => {
   }
 });
 
-// Добавим кнопку для переключения режима на мобильных
-const controls = document.querySelector('.controls');
-const panToggleBtn = document.createElement('button');
-panToggleBtn.className = 'btn';
-panToggleBtn.title = 'Toggle Pan/Rotate';
-panToggleBtn.textContent = '↔️';
-panToggleBtn.style.order = '-1'; // Разместим слева
-
-let mobilePanMode = false;
-
-panToggleBtn.addEventListener('click', () => {
-  mobilePanMode = !mobilePanMode;
-  if (mobilePanMode) {
-    panToggleBtn.style.backgroundColor = 'rgba(100, 100, 255, 0.9)';
-    panToggleBtn.textContent = '🔄';
-    showModeIndicator('pan');
-  } else {
-    panToggleBtn.style.backgroundColor = '';
-    panToggleBtn.textContent = '↔️';
-    showModeIndicator('rotate');
-  }
-});
-
-controls.appendChild(panToggleBtn);
-
-// Обновляем обработку для мобильных с учетом кнопки
-canvas.addEventListener('touchstart', (e) => {
-  e.preventDefault();
-  
-  if (e.touches.length === 2) {
-    touchStartDistance = getTouchDistance(e.touches);
-    touchStartAngle = getTouchAngle(e.touches);
-    touchStartScale = scale;
-    touchStartRotation = angle;
-  } else if (e.touches.length === 1) {
-    if (mobilePanMode) {
-      // Режим панорамирования
-      panning = true;
-      dragging = false;
-      touchStartPanX = e.touches[0].clientX;
-      touchStartPanY = e.touches[0].clientY;
-      touchStartOffsetX = offsetX;
-      touchStartOffsetY = offsetY;
-    } else {
-      // Режим вращения
-      dragging = true;
-      panning = false;
-      lastX = e.touches[0].clientX;
-    }
-  }
-}, { passive: false });
-
-canvas.addEventListener('touchmove', (e) => {
-  e.preventDefault();
-  
-  if (e.touches.length === 2 && touchStartDistance !== null && touchStartDistance > 0) {
-    // Обработка жеста двумя пальцами
-    const currentDistance = getTouchDistance(e.touches);
-    const currentAngle = getTouchAngle(e.touches);
-    
-    const zoomFactor = currentDistance / touchStartDistance;
-    scale = Math.max(0.1, Math.min(5, touchStartScale * zoomFactor));
-    
-    const angleDelta = currentAngle - touchStartAngle;
-    angle = touchStartRotation - angleDelta * 0.8;
-    
-    angle = Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, angle));
-    
-    updateInfo();
-  } else if (e.touches.length === 1) {
-    if (mobilePanMode && panning) {
-      // Панорамирование на мобильных
-      const dx = e.touches[0].clientX - touchStartPanX;
-      const dy = e.touches[0].clientY - touchStartPanY;
-      
-      offsetX = touchStartOffsetX + dx;
-      offsetY = touchStartOffsetY + dy;
-    } else if (dragging) {
-      // Вращение на мобильных
-      const dx = e.touches[0].clientX - lastX;
-      angle += dx * 0.01;
-      
-      angle = Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, angle));
-      
-      lastX = e.touches[0].clientX;
-      updateInfo();
-    }
-  }
-}, { passive: false });
-
-// Обновление информации (остаётся без изменений)
+// Обновление информации
 function updateInfo() {
+  // v/c = sin(angle) для простой визуализации
   const velocity = Math.sin(angle);
   
+  // Форматируем скорость
   let velocityStr;
   if (Math.abs(velocity) < 0.0001) {
     velocityStr = "0.000c";
   } else {
+    // При максимальном угле используем вычисленную скорость для γ=1,000,000
     const absV = Math.abs(velocity);
     if (Math.abs(Math.abs(angle) - MAX_ANGLE) < 0.0000001) {
+      // При максимальном угле показываем точное значение
       velocityStr = TARGET_V.toFixed(12) + "c";
     } else if (absV > 0.999999) {
       velocityStr = absV.toFixed(12) + "c";
@@ -421,16 +374,19 @@ function updateInfo() {
     if (velocity < 0) velocityStr = "-" + velocityStr;
   }
   
+  // Вычисляем γ
   let gamma = 1;
   const v = Math.abs(velocity);
   if (v < 0.999999999999) {
     gamma = 1 / Math.sqrt(1 - v * v);
   } else {
-    gamma = TARGET_GAMMA;
+    gamma = TARGET_GAMMA; // Максимальное значение
   }
   
+  // Форматируем γ
   let gammaStr;
   if (Math.abs(Math.abs(angle) - MAX_ANGLE) < 0.0000001) {
+    // При максимальном угле показываем точное значение
     gammaStr = TARGET_GAMMA.toFixed(3);
   } else if (gamma >= 1000) {
     gammaStr = gamma.toFixed(3);
@@ -441,6 +397,7 @@ function updateInfo() {
   document.getElementById('speedValue').textContent = velocityStr;
   document.getElementById('gammaValue').textContent = gammaStr;
   
+  // Цвет скорости
   const speedValue = document.getElementById('speedValue');
   const absV = Math.abs(velocity);
   if (absV < 0.3) {
@@ -463,7 +420,7 @@ function resize() {
 window.addEventListener("resize", resize);
 resize();
 
-// Функции рисования (остаются без изменений)
+// Функция преобразования мировых координат в экранные
 function toScreen(x, y) {
   return {
     x: x * scale + offsetX,
@@ -471,10 +428,12 @@ function toScreen(x, y) {
   };
 }
 
+// Функция выбора цвета
 function getColor(darkColor, lightColor) {
   return darkMode ? darkColor : lightColor;
 }
 
+// Функция рисования линии
 function drawLine(x1, y1, x2, y2, darkColor, lightColor, width) {
   const p1 = toScreen(x1, y1);
   const p2 = toScreen(x2, y2);
@@ -487,6 +446,7 @@ function drawLine(x1, y1, x2, y2, darkColor, lightColor, width) {
   ctx.stroke();
 }
 
+// Функция рисования отметки
 function drawMark(px, py, dirX, dirY, length, darkColor, lightColor, width, style = "solid") {
   const p = toScreen(px, py);
   const d = toScreen(px + dirX * length/2, py + dirY * length/2);
@@ -509,6 +469,7 @@ function drawMark(px, py, dirX, dirY, length, darkColor, lightColor, width, styl
   ctx.setLineDash([]);
 }
 
+// Функция рисования точки
 function drawPoint(px, py, radius, darkColor, lightColor) {
   const p = toScreen(px, py);
   ctx.fillStyle = getColor(darkColor, lightColor);
@@ -517,6 +478,7 @@ function drawPoint(px, py, radius, darkColor, lightColor) {
   ctx.fill();
 }
 
+// Функция рисования текста (только при достаточно крупном масштабе)
 function drawText(text, px, py, darkColor, lightColor, fontSize = 10, align = "center") {
   if (scale < 0.5) return;
   
@@ -529,8 +491,10 @@ function drawText(text, px, py, darkColor, lightColor, fontSize = 10, align = "c
 }
 
 function draw() {
+  // Очистка с учётом режима
   if (darkMode) {
-    ctx.fillStyle = "#001122";
+    // ТЁМНО-СИНИЙ ФОН
+    ctx.fillStyle = "#001122"; // Тёмно-синий
   } else {
     ctx.fillStyle = "#fff";
   }
@@ -587,6 +551,7 @@ function draw() {
     const bigX1 = distance * ctUnitX;
     const bigY1 = distance * ctUnitY;
     drawMark(bigX1, bigY1, ctPerpX, ctPerpY, 14, "#0ff", "#08f", 1.5);
+    // Цифры на голубой оси (только при масштабе > 0.5)
     if (scale > 0.5) {
       drawText(sec.toString(), 
                bigX1 + ctPerpX * 15,
@@ -631,12 +596,13 @@ function draw() {
     drawPoint(smallX2, smallY2, 2, "#099", "#057");
   }
 
-  // ВЕРТИКАЛЬНЫЕ ЛИНИИ
+  // ВЕРТИКАЛЬНЫЕ ЛИНИИ (мировые линии объектов в лабораторной системе)
   for(let i = -10; i <= 10; i++){ 
     const t = i / 10; 
     const px = xX0 + (xX1 - xX0) * (0.5 + t/2); 
     const py = xY0 + (xY1 - xY0) * (0.5 + t/2);
     
+    // ВЕРТИКАЛЬНЫЕ ЛИНИИ
     drawLine(
       px, py - vertLineLength/2,
       px, py + vertLineLength/2,
@@ -644,16 +610,20 @@ function draw() {
       1
     );
     
+    // ОТМЕТКИ И ЦИФРЫ НА ВЕРТИКАЛЬНЫХ ЛИНИЯХ
     for(let sec = 1; sec <= secondsPerSide; sec++) {
       const distance = sec * lineSpacing;
       
+      // БОЛЬШИЕ ОТМЕТКИ (1.0 сек) - ВВЕРХ
       const upX = px;
       const upY = py - distance;
       drawMark(upX, upY, 1, 0, 12, "#888", "#666", 1.5);
+      // Цифры на вертикальных линиях (только при масштабе > 0.5)
       if (scale > 0.5) {
         drawText(sec.toString(), upX - 8, upY, "#888", "#666", 10, "right");
       }
       
+      // БОЛЬШИЕ ОТМЕТКИ (1.0 сек) - ВНИЗ
       const downX = px;
       const downY = py + distance;
       drawMark(downX, downY, 1, 0, 12, "#888", "#666", 1.5);
@@ -661,6 +631,7 @@ function draw() {
         drawText((-sec).toString(), downX - 8, downY, "#888", "#666", 10, "right");
       }
       
+      // ОТМЕТКИ 0.5 сек
       const halfDistance = distance - halfSpacing;
       const halfUpX = px;
       const halfUpY = py - halfDistance;
@@ -671,6 +642,7 @@ function draw() {
       drawMark(halfDownX, halfDownY, 1, 0, 9, "#888", "#666", 1.0, "dashed");
     }
     
+    // МЕЛКИЕ ОТМЕТКИ (0.1 сек) на вертикальных линиях
     for(let tenth = 1; tenth <= secondsPerSide * 10; tenth++) {
       if (tenth % 5 === 0) continue;
       
@@ -685,12 +657,13 @@ function draw() {
       drawPoint(downX, downY, 1.5, "#888", "#666");
     }
     
+    // Подписи для вертикальных линий (расстояния)
     if (scale > 0.7 && i !== 0) {
       drawText(i.toString(), px, py + 20, "#888", "#666", 10);
     }
   }
 
-  // Центр креста
+  // Центр креста (начало координат)
   const center = toScreen(0, 0);
   ctx.fillStyle = getColor("#fff", "#000");
   ctx.beginPath();
@@ -703,4 +676,6 @@ function draw() {
 // Инициализация
 updateInfo();
 draw();
-</sc
+</script>
+</body>
+  </html>
