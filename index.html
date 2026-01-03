@@ -70,6 +70,10 @@
     color: #fa0;
     font-size: 16px;
   }
+  .gamma-value {
+    color: #0ff;
+    font-size: 16px;
+  }
   
   /* Стили для светлого режима */
   body.light-mode {
@@ -97,11 +101,11 @@
 <div class="info-panel" id="infoPanel">
   <div class="info-item">
     <span class="info-label">Скорость:</span>
-    <span class="info-value speed-value" id="speedValue">0.0% c</span>
+    <span class="info-value speed-value" id="speedValue">0.000c</span>
   </div>
   <div class="info-item">
-    <span class="info-label">γ (гамма):</span>
-    <span class="info-value" id="gammaValue">1.000</span>
+    <span class="info-label">γ:</span>
+    <span class="info-value gamma-value" id="gammaValue">1.000</span>
   </div>
 </div>
 
@@ -144,7 +148,10 @@ canvas.addEventListener("pointerdown", e => {
 canvas.addEventListener("pointermove", e => {
   if(dragging){
     const dx = e.clientX - lastX;
-    angle -= dx * 0.01; // вращение в обе стороны
+    angle -= dx * 0.01;
+    // Ограничение на 89.9999 градусов (почти 90)
+    const maxAngle = Math.PI/2 * 0.999999;
+    angle = Math.max(-maxAngle, Math.min(maxAngle, angle));
     lastX = e.clientX;
     updateInfo();
   }
@@ -216,23 +223,36 @@ document.getElementById('fullscreen').addEventListener('click', () => {
 // Обновление информации
 function updateInfo() {
   // v/c = sin(angle) для простой визуализации
-  // угол 90° = скорость света
   const velocity = Math.sin(angle); // v/c = sin(angle)
-  const velocityPercent = (Math.abs(velocity) * 100).toFixed(1);
   
-  // Правильный γ для СТО
-  const gamma = velocity === 1 ? Infinity : (1 / Math.sqrt(1 - velocity * velocity));
-  
-  // Определяем знак скорости
-  const sign = velocity >= 0 ? '+' : '-';
-  
-  document.getElementById('speedValue').textContent = `${sign}${velocityPercent}% c`;
-  
-  if (gamma === Infinity || gamma > 1000) {
-    document.getElementById('gammaValue').textContent = "∞";
+  // Форматируем скорость: 0.000c до 0.999c
+  let velocityStr;
+  if (Math.abs(velocity) < 0.0001) {
+    velocityStr = "0.000c";
   } else {
-    document.getElementById('gammaValue').textContent = gamma.toFixed(3);
+    velocityStr = Math.abs(velocity).toFixed(3) + "c";
+    if (velocity < 0) velocityStr = "-" + velocityStr;
   }
+  
+  // Вычисляем γ
+  const gamma = 1 / Math.sqrt(1 - velocity * velocity);
+  
+  // Форматируем γ
+  let gammaStr;
+  if (gamma > 10000) {
+    gammaStr = gamma.toExponential(2);
+  } else if (gamma > 1000) {
+    gammaStr = gamma.toFixed(0);
+  } else if (gamma > 100) {
+    gammaStr = gamma.toFixed(1);
+  } else if (gamma > 10) {
+    gammaStr = gamma.toFixed(2);
+  } else {
+    gammaStr = gamma.toFixed(3);
+  }
+  
+  document.getElementById('speedValue').textContent = velocityStr;
+  document.getElementById('gammaValue').textContent = gammaStr;
   
   // Цвет скорости
   const speedValue = document.getElementById('speedValue');
@@ -330,11 +350,10 @@ function draw() {
   const cosA = Math.cos(angle);
   const sinA = Math.sin(angle);
 
-  // --- ГОРИЗОНТАЛЬНАЯ ОСЬ (лабораторная система) ---
-  drawLine(-vertLineLength, cy, vertLineLength, cy, "#888", "#666", 2);
+  // --- ГОРИЗОНТАЛЬНАЯ ОСЬ (статистическая, ГЛУБАЯ) ---
+  drawLine(-vertLineLength, cy, vertLineLength, cy, "#0ff", "#08f", 2);
   
-  // --- ВЕРТИКАЛЬНАЯ ОСЬ (лабораторная система) ---
-  drawLine(cx, -vertLineLength, cx, vertLineLength, "#888", "#666", 2);
+  // УБРАЛ ВЕРТИКАЛЬНУЮ СЕРУЮ ОСЬ
 
   // КРЕСТ (движущаяся система) - ПОВОРАЧИВАЕТСЯ
   const ctX0 = cx - sinA * vertLineLength/2;
@@ -410,8 +429,7 @@ function draw() {
     drawPoint(smallX2, smallY2, 2, "#099", "#057");
   }
 
-  // ВЕРТИКАЛЬНЫЕ ЛИНИИ (всегда вертикальные, не зависят от поворота!)
-  // Они привязаны к оси x′ (оранжевой), но остаются вертикальными в экранных координатах
+  // ВЕРТИКАЛЬНЫЕ ЛИНИИ (ВСЕ СЕРЫЕ, включая центральную)
   for(let i = -5; i <= 5; i++){ 
     const t = i / 5; 
     const px = xX0 + (xX1 - xX0) * (0.5 + t/2); 
@@ -421,7 +439,7 @@ function draw() {
     drawLine(
       px, py - vertLineLength/2,
       px, py + vertLineLength/2,
-      "#880", "#660", 
+      "#888", "#666",  // СЕРЫЕ линии
       1
     );
     
@@ -432,21 +450,21 @@ function draw() {
       // БОЛЬШИЕ ОТМЕТКИ (1.0 сек)
       const upX = px;
       const upY = py - distance;
-      drawMark(upX, upY, 1, 0, 12, "#fa0", "#c60", 1.5);
+      drawMark(upX, upY, 1, 0, 12, "#888", "#666", 1.5); // СЕРЫЕ отметки
       
       const downX = px;
       const downY = py + distance;
-      drawMark(downX, downY, 1, 0, 12, "#fa0", "#c60", 1.5);
+      drawMark(downX, downY, 1, 0, 12, "#888", "#666", 1.5);
       
       // ОТМЕТКИ 0.5 сек
       const halfDistance = distance - halfSpacing;
       const halfUpX = px;
       const halfUpY = py - halfDistance;
-      drawMark(halfUpX, halfUpY, 1, 0, 9, "#c80", "#a50", 1.0, "dashed");
+      drawMark(halfUpX, halfUpY, 1, 0, 9, "#888", "#666", 1.0, "dashed"); // СЕРЫЕ пунктир
       
       const halfDownX = px;
       const halfDownY = py + halfDistance;
-      drawMark(halfDownX, halfDownY, 1, 0, 9, "#c80", "#a50", 1.0, "dashed");
+      drawMark(halfDownX, halfDownY, 1, 0, 9, "#888", "#666", 1.0, "dashed");
     }
     
     // МЕЛКИЕ ОТМЕТКИ (0.1 сек)
@@ -457,11 +475,11 @@ function draw() {
       const upX = px;
       const upY = py - distance;
       
-      drawPoint(upX, upY, 1.5, "#880", "#440");
+      drawPoint(upX, upY, 1.5, "#888", "#666"); // СЕРЫЕ точки
       
       const downX = px;
       const downY = py + distance;
-      drawPoint(downX, downY, 1.5, "#880", "#440");
+      drawPoint(downX, downY, 1.5, "#888", "#666");
     }
   }
 
@@ -480,4 +498,4 @@ updateInfo();
 draw();
 </script>
 </body>
-</html>
+                                                                 </html>
