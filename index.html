@@ -128,7 +128,7 @@
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d");
 
-let angle = 0; // угол от -π/4 до π/4 радиан
+let angle = 0; // угол от 0 до π/4 радиан
 let dragging = false;
 let lastX = 0;
 let scale = 0.3;
@@ -139,21 +139,23 @@ let darkMode = true;
 const numLines = 11;
 const secondsPerSide = 5;
 const vertLineLength = 3000;
-const MAX_ANGLE = Math.PI / 4;
-const MAX_GAMMA = 1000000; // Ограничиваем γ до 1,000,000
+const MAX_ANGLE = Math.PI / 4; // 45 градусов
+const MAX_GAMMA = 1000000; // Максимальное значение γ
 
 // РАСЧЕТ РАССТОЯНИЙ
 const lineSpacing = vertLineLength / (numLines - 1);
 const halfSpacing = lineSpacing / 2;
 const smallSpacing = lineSpacing / 10;
 
-// Вычисляем максимальный угол для γ = 1,000,000
-// v = tan(angle), γ = 1/√(1-v²) => v = √(1-1/γ²)
-const MAX_V = Math.sqrt(1 - 1/(MAX_GAMMA * MAX_GAMMA));
-const MAX_ANGLE_FOR_GAMMA = Math.atan(MAX_V);
-const angleScale = MAX_ANGLE_FOR_GAMMA / MAX_ANGLE;
+// Вычисляем соответствие: угол -> быстрота -> скорость -> γ
+// При угле 0: быстрота = 0, v/c = 0, γ = 1
+// При угле π/4: быстрота = arccosh(MAX_GAMMA), v/c = tanh(rapidity), γ = MAX_GAMMA
+const MAX_RAPIDITY = Math.acosh(MAX_GAMMA); // arccosh(1,000,000) ≈ 14.50866
+const angleToRapidityScale = MAX_RAPIDITY / MAX_ANGLE;
 
-console.log(`MAX_V = ${MAX_V}, MAX_ANGLE_FOR_GAMMA = ${MAX_ANGLE_FOR_GAMMA*180/Math.PI}°, angleScale = ${angleScale}`);
+console.log(`MAX_RAPIDITY = ${MAX_RAPIDITY}`);
+console.log(`При γ=2: быстрота = ${Math.acosh(2).toFixed(10)}, v/c = ${Math.tanh(Math.acosh(2)).toFixed(10)}`);
+console.log(`При γ=10: быстрота = ${Math.acosh(10).toFixed(10)}, v/c = ${Math.tanh(Math.acosh(10)).toFixed(10)}`);
 
 // drag
 canvas.addEventListener("pointerdown", e => {
@@ -165,8 +167,8 @@ canvas.addEventListener("pointermove", e => {
   if(dragging){
     const dx = e.clientX - lastX;
     angle -= dx * 0.01;
-    // Ограничиваем угол до ±π/4
-    angle = Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, angle));
+    // Ограничиваем угол до [0, π/4]
+    angle = Math.max(0, Math.min(MAX_ANGLE, angle));
     lastX = e.clientX;
     updateInfo();
   }
@@ -237,38 +239,23 @@ document.getElementById('fullscreen').addEventListener('click', () => {
 
 // Обновление информации
 function updateInfo() {
-  // Масштабируем угол для ограничения γ
-  const scaledAngle = angle * angleScale;
+  // 1. Угол -> Быстрота
+  const rapidity = angle * angleToRapidityScale;
   
-  // v/c = tan(θ)
-  const velocity = Math.tan(scaledAngle);
+  // 2. Быстрота -> Скорость (v/c = tanh(rapidity))
+  const velocity = Math.tanh(rapidity);
   
-  // Вычисляем γ с защитой от деления на 0
-  let gamma;
-  if (Math.abs(scaledAngle) >= MAX_ANGLE_FOR_GAMMA * 0.9999999) {
-    gamma = MAX_GAMMA;
-  } else {
-    gamma = 1 / Math.sqrt(1 - velocity * velocity);
-    gamma = Math.min(gamma, MAX_GAMMA); // Ограничиваем сверху
-  }
+  // 3. Быстрота -> γ (γ = cosh(rapidity))
+  const gamma = Math.cosh(rapidity);
   
-  // Быстрота = atanh(v/c)
-  let rapidity;
-  if (Math.abs(velocity) >= 0.999999999999) {
-    rapidity = Math.atanh(MAX_V); // Максимальная быстрота для γ=1,000,000
-  } else {
-    rapidity = Math.atanh(velocity);
-  }
-  
-  // Форматируем скорость: 8 знаков после запятой
-  const velocityFormatted = Math.abs(velocity).toFixed(8);
-  const sign = velocity >= 0 ? '+' : '-';
+  // Форматируем скорость: 10 знаков после запятой
+  const velocityFormatted = velocity.toFixed(10);
   
   // Обновляем отображение
-  document.getElementById('speedValue').textContent = `${sign}${velocityFormatted}`;
+  document.getElementById('speedValue').textContent = velocityFormatted;
   
   // Форматируем γ
-  if (gamma >= MAX_GAMMA * 0.9999) {
+  if (gamma >= MAX_GAMMA * 0.99999999) {
     document.getElementById('gammaValue').textContent = '1,000,000';
     document.getElementById('gammaValue').style.color = darkMode ? '#f00' : '#c00';
   } else if (gamma >= 1000) {
@@ -277,31 +264,39 @@ function updateInfo() {
   } else if (gamma >= 100) {
     document.getElementById('gammaValue').textContent = gamma.toFixed(1);
     document.getElementById('gammaValue').style.color = darkMode ? '#ff0' : '#880';
+  } else if (gamma >= 10) {
+    document.getElementById('gammaValue').textContent = gamma.toFixed(2);
+    document.getElementById('gammaValue').style.color = darkMode ? '#af0' : '#6a0';
   } else {
     document.getElementById('gammaValue').textContent = gamma.toFixed(3);
     document.getElementById('gammaValue').style.color = darkMode ? '#0ff' : '#08f';
   }
   
   // Форматируем быстроту
-  if (Math.abs(scaledAngle) >= MAX_ANGLE_FOR_GAMMA * 0.9999) {
-    document.getElementById('rapidityValue').textContent = Math.atanh(MAX_V).toFixed(3);
-  } else {
-    document.getElementById('rapidityValue').textContent = rapidity.toFixed(3);
-  }
+  document.getElementById('rapidityValue').textContent = rapidity.toFixed(6);
   
   // Цвет скорости
   const speedValue = document.getElementById('speedValue');
-  const absV = Math.abs(velocity);
-  if (absV < 0.3) {
+  if (velocity < 0.3) {
     speedValue.style.color = darkMode ? '#0f0' : '#080';
-  } else if (absV < 0.7) {
+  } else if (velocity < 0.7) {
     speedValue.style.color = darkMode ? '#ff0' : '#880';
-  } else if (absV < 0.95) {
+  } else if (velocity < 0.95) {
     speedValue.style.color = darkMode ? '#f80' : '#c60';
-  } else if (absV < 0.999) {
+  } else if (velocity < 0.999) {
     speedValue.style.color = darkMode ? '#f08' : '#a06';
   } else {
     speedValue.style.color = darkMode ? '#f00' : '#c00';
+  }
+  
+  // Проверка соответствия для отладки
+  if (Math.abs(velocity - 0.8660254038) < 0.0000001) {
+    console.log(`Проверка: при v/c = 0.8660254038, γ должен быть 2.00`);
+    console.log(`Вычисленный γ = ${gamma}, ожидаемый = 2.00`);
+  }
+  if (Math.abs(gamma - 2) < 0.001) {
+    console.log(`Проверка: при γ = 2.00, v/c должен быть 0.8660254038`);
+    console.log(`Вычисленный v/c = ${velocity}, ожидаемый = 0.8660254038`);
   }
 }
 
@@ -384,10 +379,10 @@ function draw() {
   const cx = 0;
   const cy = 0;
 
-  // Масштабируем угол для визуализации
-  const scaledAngle = angle * angleScale;
-  const cosA = Math.cos(scaledAngle);
-  const sinA = Math.sin(scaledAngle);
+  // Угол для визуализации (тот же угол, что используется для вычислений)
+  const visAngle = angle; // Используем тот же угол
+  const cosA = Math.cos(visAngle);
+  const sinA = Math.sin(visAngle);
 
   // --- горизонтальная ось ---
   drawLine(-vertLineLength, cy, vertLineLength, cy, "#888", "#666", 2);
@@ -545,4 +540,4 @@ updateInfo();
 draw();
 </script>
 </body>
-  </html>
+      </html>
