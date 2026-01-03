@@ -118,7 +118,7 @@
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d");
 
-let angle = 0; // Используем угол для вращения (пока не удаляем)
+let angle = 0; // угол поворота креста
 let dragging = false;
 let lastX = 0;
 let scale = 0.3;
@@ -144,7 +144,7 @@ canvas.addEventListener("pointerdown", e => {
 canvas.addEventListener("pointermove", e => {
   if(dragging){
     const dx = e.clientX - lastX;
-    angle -= dx * 0.01;
+    angle -= dx * 0.01; // вращение в обе стороны
     lastX = e.clientX;
     updateInfo();
   }
@@ -215,16 +215,24 @@ document.getElementById('fullscreen').addEventListener('click', () => {
 
 // Обновление информации
 function updateInfo() {
-  // Используем угол для вычисления скорости (упрощённо)
-  const velocity = Math.sin(angle) * 0.99; // Ограничиваем 0.99c
+  // v/c = sin(angle) для простой визуализации
+  // угол 90° = скорость света
+  const velocity = Math.sin(angle); // v/c = sin(angle)
   const velocityPercent = (Math.abs(velocity) * 100).toFixed(1);
-  const gamma = 1 / Math.sqrt(1 - velocity * velocity);
+  
+  // Правильный γ для СТО
+  const gamma = velocity === 1 ? Infinity : (1 / Math.sqrt(1 - velocity * velocity));
   
   // Определяем знак скорости
   const sign = velocity >= 0 ? '+' : '-';
   
   document.getElementById('speedValue').textContent = `${sign}${velocityPercent}% c`;
-  document.getElementById('gammaValue').textContent = gamma.toFixed(3);
+  
+  if (gamma === Infinity || gamma > 1000) {
+    document.getElementById('gammaValue').textContent = "∞";
+  } else {
+    document.getElementById('gammaValue').textContent = gamma.toFixed(3);
+  }
   
   // Цвет скорости
   const speedValue = document.getElementById('speedValue');
@@ -322,10 +330,13 @@ function draw() {
   const cosA = Math.cos(angle);
   const sinA = Math.sin(angle);
 
-  // --- горизонтальная ось ---
+  // --- ГОРИЗОНТАЛЬНАЯ ОСЬ (лабораторная система) ---
   drawLine(-vertLineLength, cy, vertLineLength, cy, "#888", "#666", 2);
+  
+  // --- ВЕРТИКАЛЬНАЯ ОСЬ (лабораторная система) ---
+  drawLine(cx, -vertLineLength, cx, vertLineLength, "#888", "#666", 2);
 
-  // крест ct′ + x′
+  // КРЕСТ (движущаяся система) - ПОВОРАЧИВАЕТСЯ
   const ctX0 = cx - sinA * vertLineLength/2;
   const ctY0 = cy - cosA * vertLineLength/2;
   const ctX1 = cx + sinA * vertLineLength/2;
@@ -336,10 +347,10 @@ function draw() {
   const xX1 = cx + cosA * vertLineLength/2;
   const xY1 = cy - sinA * vertLineLength/2;
 
-  // ct′ (голубая)
+  // ct′ (голубая) - наклонная ось времени
   drawLine(ctX0, ctY0, ctX1, ctY1, "#0ff", "#08f", 1);
 
-  // x′ (оранжевая)
+  // x′ (оранжевая) - наклонная пространственная ось
   drawLine(xX0, xY0, xX1, xY1, "#fa0", "#c60", 1);
 
   // ВЕКТОРЫ ДЛЯ ОСЕЙ
@@ -399,52 +410,43 @@ function draw() {
     drawPoint(smallX2, smallY2, 2, "#099", "#057");
   }
 
-  // ВЕРТИКАЛЬНЫЕ ЛИНИИ (11 штук, по 5 с каждой стороны)
-  for(let i = -5; i <= 5; i++){ // -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5
+  // ВЕРТИКАЛЬНЫЕ ЛИНИИ (всегда вертикальные, не зависят от поворота!)
+  // Они привязаны к оси x′ (оранжевой), но остаются вертикальными в экранных координатах
+  for(let i = -5; i <= 5; i++){ 
     const t = i / 5; 
     const px = xX0 + (xX1 - xX0) * (0.5 + t/2); 
     const py = xY0 + (xY1 - xY0) * (0.5 + t/2);
     
-    // Вектор вертикальной линии
-    const vertDx = -sinA;
-    const vertDy = cosA;
-    
-    // Рисуем вертикальную линию
+    // ВЕРТИКАЛЬНЫЕ ЛИНИИ - всегда вертикальны в экранных координатах
     drawLine(
-      px - vertDx * vertLineLength/2, 
-      py - vertDy * vertLineLength/2,
-      px + vertDx * vertLineLength/2, 
-      py + vertDy * vertLineLength/2,
+      px, py - vertLineLength/2,
+      px, py + vertLineLength/2,
       "#880", "#660", 
       1
     );
     
-    // Вектор для отметок
-    const markDx = cosA;
-    const markDy = sinA;
-    
-    // ОТМЕТКИ НА ВЕРТИКАЛЬНЫХ ЛИНИЯХ
+    // ОТМЕТКИ НА ВЕРТИКАЛЬНЫХ ЛИНИЯХ (вертикальное расстояние)
     for(let sec = 1; sec <= secondsPerSide; sec++) {
       const distance = sec * lineSpacing;
       
       // БОЛЬШИЕ ОТМЕТКИ (1.0 сек)
-      const upX = px - vertDx * distance;
-      const upY = py - vertDy * distance;
-      drawMark(upX, upY, markDx, markDy, 12, "#fa0", "#c60", 1.5);
+      const upX = px;
+      const upY = py - distance;
+      drawMark(upX, upY, 1, 0, 12, "#fa0", "#c60", 1.5);
       
-      const downX = px + vertDx * distance;
-      const downY = py + vertDy * distance;
-      drawMark(downX, downY, markDx, markDy, 12, "#fa0", "#c60", 1.5);
+      const downX = px;
+      const downY = py + distance;
+      drawMark(downX, downY, 1, 0, 12, "#fa0", "#c60", 1.5);
       
       // ОТМЕТКИ 0.5 сек
       const halfDistance = distance - halfSpacing;
-      const halfUpX = px - vertDx * halfDistance;
-      const halfUpY = py - vertDy * halfDistance;
-      drawMark(halfUpX, halfUpY, markDx, markDy, 9, "#c80", "#a50", 1.0, "dashed");
+      const halfUpX = px;
+      const halfUpY = py - halfDistance;
+      drawMark(halfUpX, halfUpY, 1, 0, 9, "#c80", "#a50", 1.0, "dashed");
       
-      const halfDownX = px + vertDx * halfDistance;
-      const halfDownY = py + vertDy * halfDistance;
-      drawMark(halfDownX, halfDownY, markDx, markDy, 9, "#c80", "#a50", 1.0, "dashed");
+      const halfDownX = px;
+      const halfDownY = py + halfDistance;
+      drawMark(halfDownX, halfDownY, 1, 0, 9, "#c80", "#a50", 1.0, "dashed");
     }
     
     // МЕЛКИЕ ОТМЕТКИ (0.1 сек)
@@ -452,13 +454,13 @@ function draw() {
       if (tenth % 5 === 0 || tenth % 10 === 0) continue;
       
       const distance = tenth * smallSpacing;
-      const upX = px - vertDx * distance;
-      const upY = py - vertDy * distance;
+      const upX = px;
+      const upY = py - distance;
       
       drawPoint(upX, upY, 1.5, "#880", "#440");
       
-      const downX = px + vertDx * distance;
-      const downY = py + vertDy * distance;
+      const downX = px;
+      const downY = py + distance;
       drawPoint(downX, downY, 1.5, "#880", "#440");
     }
   }
@@ -478,4 +480,4 @@ updateInfo();
 draw();
 </script>
 </body>
-    </html>
+</html>
