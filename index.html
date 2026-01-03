@@ -3,9 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <title>SR Visualization</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <style>
-  body { margin:0; background:#000833; overflow:hidden; touch-action: none; font-family: Arial, sans-serif; }
+  body { 
+    margin:0; 
+    background:#000833; 
+    overflow:hidden; 
+    touch-action: none; 
+    font-family: Arial, sans-serif;
+    /* Предотвращаем масштабирование в полноэкранном режиме */
+    transform-origin: 0 0;
+  }
   canvas { display:block; }
+  
+  /* Контейнер для интерфейса, который не будет масштабироваться */
+  .ui-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 100;
+    /* Предотвращаем масштабирование UI */
+    transform: scale(1);
+    transform-origin: 0 0;
+  }
+  
+  /* Все элементы UI должны иметь pointer-events: auto */
+  .ui-container * {
+    pointer-events: auto;
+  }
+  
   /* Кнопки управления */
   .controls {
     position: absolute;
@@ -13,7 +42,6 @@
     right: 10px;
     display: flex;
     gap: 8px;
-    z-index: 100;
     flex-wrap: wrap;
     justify-content: flex-end;
     max-width: 100px;
@@ -50,7 +78,6 @@
     border-radius: 5px;
     font-size: 14px;
     border: 1px solid rgba(255,255,255,0.2);
-    z-index: 100;
     min-width: 200px;
   }
   .info-item {
@@ -92,28 +119,40 @@
   body.light-mode .info-label {
     color: #666;
   }
+  
+  /* Стили для полноэкранного режима */
+  :fullscreen .ui-container {
+    transform: scale(1) !important;
+  }
+  :fullscreen canvas {
+    width: 100% !important;
+    height: 100% !important;
+  }
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
 
-<!-- Панель информации -->
-<div class="info-panel" id="infoPanel">
-  <div class="info-item">
-    <span class="info-label">Speed:</span>
-    <span class="info-value speed-value" id="speedValue">0.000c</span>
+<!-- Контейнер для UI, который не масштабируется -->
+<div class="ui-container">
+  <!-- Панель информации -->
+  <div class="info-panel" id="infoPanel">
+    <div class="info-item">
+      <span class="info-label">Speed:</span>
+      <span class="info-value speed-value" id="speedValue">0.000c</span>
+    </div>
+    <div class="info-item">
+      <span class="info-label">γ:</span>
+      <span class="info-value gamma-value" id="gammaValue">1.000</span>
+    </div>
   </div>
-  <div class="info-item">
-    <span class="info-label">γ:</span>
-    <span class="info-value gamma-value" id="gammaValue">1.000</span>
-  </div>
-</div>
 
-<!-- Кнопки управления -->
-<div class="controls">
-  <button class="btn" id="negBtn" title="Negative/Invert">☀</button>
-  <button class="btn" id="zoomReset" title="Reset scale">↻</button>
-  <button class="btn" id="fullscreen" title="Fullscreen mode">⛶</button>
+  <!-- Кнопки управления -->
+  <div class="controls">
+    <button class="btn" id="negBtn" title="Negative/Invert">☀</button>
+    <button class="btn" id="zoomReset" title="Reset scale">↻</button>
+    <button class="btn" id="fullscreen" title="Fullscreen mode">⛶</button>
+  </div>
 </div>
 
 <script>
@@ -127,6 +166,7 @@ let lastX = 0;
 let scale = 0.3;
 let offsetX = 0, offsetY = 0;
 let darkMode = true;
+let isFullscreen = false;
 
 // ПАРАМЕТРЫ (увеличенные)
 const numLines = 21; // 10 с каждой стороны + центральная = 21
@@ -325,12 +365,26 @@ document.getElementById('zoomReset').addEventListener('click', () => {
 // Полноэкранный режим
 document.getElementById('fullscreen').addEventListener('click', () => {
   if (!document.fullscreenElement) {
+    // Входим в полноэкранный режим
     document.documentElement.requestFullscreen().catch(err => {
       console.error(`Fullscreen error: ${err.message}`);
     });
+    isFullscreen = true;
+    document.getElementById('fullscreen').textContent = '⤢';
   } else {
+    // Выходим из полноэкранного режима
     document.exitFullscreen();
+    isFullscreen = false;
+    document.getElementById('fullscreen').textContent = '⛶';
   }
+});
+
+// Слушатель событий полноэкранного режима
+document.addEventListener('fullscreenchange', () => {
+  isFullscreen = !!document.fullscreenElement;
+  document.getElementById('fullscreen').textContent = isFullscreen ? '⤢' : '⛶';
+  // Принудительно обновляем размеры canvas
+  resize();
 });
 
 // Обновление информации
@@ -544,7 +598,7 @@ function draw() {
       drawText(sec.toString(), 
                bigX1 + ctPerpX * 15,
                bigY1 + ctPerpY * 15, 
-               "#0ff", "#08f", 20); // Увеличен размер шрифта в 2 раза
+               "#0ff", "#08f", 20);
     }
     
     const bigX2 = -distance * ctUnitX;
@@ -555,7 +609,7 @@ function draw() {
       drawText((-sec).toString(), 
                bigX2 + ctPerpX * 15, 
                bigY2 + ctPerpY * 15, 
-               "#0ff", "#08f", 20); // Увеличен размер шрифта в 2 раза
+               "#0ff", "#08f", 20);
     }
     
     // ОТМЕТКИ 0.5 сек
@@ -610,7 +664,7 @@ function draw() {
       // Цифры на вертикальных линиях (только при масштабе > 0.5)
       if (scale > 0.5) {
         // ИСПРАВЛЕНО: положительные значения вверху
-        drawText(sec.toString(), upX - 16, upY, "#888", "#666", 20, "right"); // Увеличен размер шрифта в 2 раза
+        drawText(sec.toString(), upX - 16, upY, "#888", "#666", 20, "right");
       }
       
       // БОЛЬШИЕ ОТМЕТКИ (1.0 сек) - ВНИЗ
@@ -619,7 +673,7 @@ function draw() {
       drawMark(downX, downY, 1, 0, 12, "#888", "#666", 1.5);
       if (scale > 0.5) {
         // ИСПРАВЛЕНО: отрицательные значения внизу
-        drawText((-sec).toString(), downX - 16, downY, "#888", "#666", 20, "right"); // Увеличен размер шрифта в 2 раза
+        drawText((-sec).toString(), downX - 16, downY, "#888", "#666", 20, "right");
       }
       
       // ОТМЕТКИ 0.5 сек
@@ -650,7 +704,7 @@ function draw() {
     
     // Подписи для вертикальных линий (расстояния)
     if (scale > 0.7 && i !== 0) {
-      drawText(i.toString(), px, py + 25, "#888", "#666", 20); // Увеличен размер шрифта в 2 раза
+      drawText(i.toString(), px, py + 25, "#888", "#666", 20);
     }
   }
 
@@ -669,4 +723,4 @@ updateInfo();
 draw();
 </script>
 </body>
-  </html>
+</html>
