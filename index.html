@@ -351,10 +351,9 @@ function draw() {
   const sinA = Math.sin(angle);
 
   // --- ГОРИЗОНТАЛЬНАЯ ОСЬ (статистическая, ГЛУБАЯ) ---
-  drawLine(-vertLineLength, cy, vertLineLength, cy, "#0ff", "#08f", 2);
+  // Толщина 1 (такая же как у голубой наклонной)
+  drawLine(-vertLineLength, cy, vertLineLength, cy, "#0ff", "#08f", 1);
   
-  // УБРАЛ ВЕРТИКАЛЬНУЮ СЕРУЮ ОСЬ
-
   // КРЕСТ (движущаяся система) - ПОВОРАЧИВАЕТСЯ
   const ctX0 = cx - sinA * vertLineLength/2;
   const ctY0 = cy - cosA * vertLineLength/2;
@@ -366,11 +365,11 @@ function draw() {
   const xX1 = cx + cosA * vertLineLength/2;
   const xY1 = cy - sinA * vertLineLength/2;
 
-  // ct′ (голубая) - наклонная ось времени
+  // ct′ (голубая) - наклонная ось времени - толщина 1
   drawLine(ctX0, ctY0, ctX1, ctY1, "#0ff", "#08f", 1);
 
-  // x′ (оранжевая) - наклонная пространственная ось
-  drawLine(xX0, xY0, xX1, xY1, "#fa0", "#c60", 1);
+  // x′ (СЕРАЯ) - наклонная пространственная ось - толщина 1 (как вертикальные)
+  drawLine(xX0, xY0, xX1, xY1, "#888", "#666", 1);
 
   // ВЕКТОРЫ ДЛЯ ОСЕЙ
   const ctDirX = ctX1 - ctX0;
@@ -429,13 +428,14 @@ function draw() {
     drawPoint(smallX2, smallY2, 2, "#099", "#057");
   }
 
-  // ВЕРТИКАЛЬНЫЕ ЛИНИИ (ВСЕ СЕРЫЕ, включая центральную)
+  // ВЕРТИКАЛЬНЫЕ ЛИНИИ (ВСЕ СЕРЫЕ)
   for(let i = -5; i <= 5; i++){ 
     const t = i / 5; 
     const px = xX0 + (xX1 - xX0) * (0.5 + t/2); 
     const py = xY0 + (xY1 - xY0) * (0.5 + t/2);
     
     // ВЕРТИКАЛЬНЫЕ ЛИНИИ - всегда вертикальны в экранных координатах
+    // Толщина 1 (как у наклонной серой)
     drawLine(
       px, py - vertLineLength/2,
       px, py + vertLineLength/2,
@@ -498,4 +498,4 @@ updateInfo();
 draw();
 </script>
 </body>
-                                                                 </html>
+</html>
