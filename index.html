@@ -135,6 +135,18 @@ const numLines = 21; // 10 с каждой стороны + центральна
 const secondsPerSide = 10; // было 5, теперь 10
 const vertLineLength = 3000;
 
+// ТARGET GAMMA = 1,000,000
+const TARGET_GAMMA = 1000000.000;
+// Вычисляем скорость для γ = 1,000,000
+const TARGET_V = Math.sqrt(1 - 1/(TARGET_GAMMA * TARGET_GAMMA));
+// Вычисляем угол для этой скорости (v/c = sin(angle))
+const MAX_ANGLE = Math.asin(TARGET_V);
+
+console.log(`Target γ: ${TARGET_GAMMA}`);
+console.log(`Target v/c: ${TARGET_V}`);
+console.log(`Max angle (rad): ${MAX_ANGLE}`);
+console.log(`Max angle (deg): ${MAX_ANGLE * 180/Math.PI}`);
+
 // МУЛЬТИТАЧ ПЕРЕМЕННЫЕ
 let touchStartDistance = null;
 let touchStartAngle = null;
@@ -199,9 +211,8 @@ canvas.addEventListener('touchmove', (e) => {
       const angleDelta = currentAngle - touchStartAngle;
       let newAngle = touchStartRotation + angleDelta * 0.8; // Коэффициент для плавности
       
-      // Ограничение угла (соответствует γ ≈ 1,000,000)
-      const maxAngle = Math.PI/2 * 0.9999999999;
-      newAngle = Math.max(-maxAngle, Math.min(maxAngle, newAngle));
+      // Ограничение угла
+      newAngle = Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, newAngle));
       angle = newAngle;
     }
     
@@ -209,11 +220,11 @@ canvas.addEventListener('touchmove', (e) => {
   } else if (e.touches.length === 1 && dragging) {
     // Перетаскивание одним пальцем
     const dx = e.touches[0].clientX - lastX;
-    let newAngle = angle - dx * 0.01;
+    // РЕВЕРС: меняем знак на противоположный
+    let newAngle = angle + dx * 0.01;
     
-    // Ограничение угла (соответствует γ ≈ 1,000,000)
-    const maxAngle = Math.PI/2 * 0.9999999999;
-    newAngle = Math.max(-maxAngle, Math.min(maxAngle, newAngle));
+    // Ограничение угла
+    newAngle = Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, newAngle));
     angle = newAngle;
     
     lastX = e.touches[0].clientX;
@@ -239,11 +250,11 @@ canvas.addEventListener("pointerdown", e => {
 canvas.addEventListener("pointermove", e => {
   if(dragging){
     const dx = e.clientX - lastX;
-    let newAngle = angle - dx * 0.01;
+    // РЕВЕРС: меняем знак на противоположный
+    let newAngle = angle + dx * 0.01;
     
-    // Ограничение угла (соответствует γ ≈ 1,000,000)
-    const maxAngle = Math.PI/2 * 0.9999999999;
-    newAngle = Math.max(-maxAngle, Math.min(maxAngle, newAngle));
+    // Ограничение угла
+    newAngle = Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, newAngle));
     angle = newAngle;
     
     lastX = e.clientX;
@@ -292,365 +303,4 @@ document.getElementById('zoomIn').addEventListener('click', () => {
 });
 
 document.getElementById('zoomOut').addEventListener('click', () => {
-  scale = Math.max(0.1, scale / 1.2);
-  offsetX = canvas.width/2;
-  offsetY = canvas.height/2;
-});
-
-document.getElementById('zoomReset').addEventListener('click', () => {
-  scale = 0.3;
-  offsetX = canvas.width/2;
-  offsetY = canvas.height/2;
-});
-
-// Полноэкранный режим
-document.getElementById('fullscreen').addEventListener('click', () => {
-  if (!document.fullscreenElement) {
-    document.documentElement.requestFullscreen().catch(err => {
-      console.error(`Fullscreen error: ${err.message}`);
-    });
-  } else {
-    document.exitFullscreen();
-  }
-});
-
-// Обновление информации
-function updateInfo() {
-  // v/c = sin(angle) для простой визуализации
-  const velocity = Math.sin(angle);
-  
-  // Форматируем скорость
-  let velocityStr;
-  if (Math.abs(velocity) < 0.0001) {
-    velocityStr = "0.000c";
-  } else {
-    // Показываем больше знаков при высокой скорости
-    const absV = Math.abs(velocity);
-    if (absV > 0.999999) {
-      // Форматируем для очень высоких скоростей
-      const vStr = absV.toFixed(12);
-      // Находим индекс первой не-9 цифры
-      let i;
-      for (i = 2; i < vStr.length; i++) {
-        if (vStr[i] !== '9' && vStr[i] !== '.') break;
-      }
-      velocityStr = "0." + "9".repeat(i-2) + "...c";
-    } else if (absV > 0.999) {
-      velocityStr = absV.toFixed(6) + "c";
-    } else if (absV > 0.99) {
-      velocityStr = absV.toFixed(5) + "c";
-    } else {
-      velocityStr = absV.toFixed(3) + "c";
-    }
-    if (velocity < 0) velocityStr = "-" + velocityStr;
-  }
-  
-  // Вычисляем γ (с защитой от деления на ноль)
-  let gamma = 1;
-  const v = Math.abs(velocity);
-  if (v < 0.999999999999) {
-    gamma = 1 / Math.sqrt(1 - v * v);
-  } else {
-    gamma = 1000000; // Максимальное значение
-  }
-  
-  // Форматируем γ
-  let gammaStr;
-  if (gamma > 1000000) {
-    gammaStr = ">1M";
-  } else if (gamma > 10000) {
-    gammaStr = gamma.toExponential(2);
-  } else if (gamma > 1000) {
-    gammaStr = gamma.toFixed(0);
-  } else if (gamma > 100) {
-    gammaStr = gamma.toFixed(1);
-  } else if (gamma > 10) {
-    gammaStr = gamma.toFixed(2);
-  } else {
-    gammaStr = gamma.toFixed(3);
-  }
-  
-  document.getElementById('speedValue').textContent = velocityStr;
-  document.getElementById('gammaValue').textContent = gammaStr;
-  
-  // Цвет скорости
-  const speedValue = document.getElementById('speedValue');
-  const absV = Math.abs(velocity);
-  if (absV < 0.3) {
-    speedValue.style.color = darkMode ? '#0f0' : '#080';
-  } else if (absV < 0.7) {
-    speedValue.style.color = darkMode ? '#ff0' : '#880';
-  } else if (absV < 0.95) {
-    speedValue.style.color = darkMode ? '#f80' : '#c60';
-  } else {
-    speedValue.style.color = darkMode ? '#f00' : '#c00';
-  }
-}
-
-function resize() {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-  offsetX = canvas.width/2;
-  offsetY = canvas.height/2;
-}
-window.addEventListener("resize", resize);
-resize();
-
-// Функция преобразования мировых координат в экранные
-function toScreen(x, y) {
-  return {
-    x: x * scale + offsetX,
-    y: y * scale + offsetY
-  };
-}
-
-// Функция выбора цвета
-function getColor(darkColor, lightColor) {
-  return darkMode ? darkColor : lightColor;
-}
-
-// Функция рисования линии
-function drawLine(x1, y1, x2, y2, darkColor, lightColor, width) {
-  const p1 = toScreen(x1, y1);
-  const p2 = toScreen(x2, y2);
-  
-  ctx.strokeStyle = getColor(darkColor, lightColor);
-  ctx.lineWidth = width;
-  ctx.beginPath();
-  ctx.moveTo(p1.x, p1.y);
-  ctx.lineTo(p2.x, p2.y);
-  ctx.stroke();
-}
-
-// Функция рисования отметки
-function drawMark(px, py, dirX, dirY, length, darkColor, lightColor, width, style = "solid") {
-  const p = toScreen(px, py);
-  const d = toScreen(px + dirX * length/2, py + dirY * length/2);
-  const d2 = toScreen(px - dirX * length/2, py - dirY * length/2);
-  
-  ctx.strokeStyle = getColor(darkColor, lightColor);
-  ctx.lineWidth = width;
-  
-  if (style === "dashed") {
-    ctx.setLineDash([3, 2]);
-  } else {
-    ctx.setLineDash([]);
-  }
-  
-  ctx.beginPath();
-  ctx.moveTo(d2.x, d2.y);
-  ctx.lineTo(d.x, d.y);
-  ctx.stroke();
-  
-  ctx.setLineDash([]);
-}
-
-// Функция рисования точки
-function drawPoint(px, py, radius, darkColor, lightColor) {
-  const p = toScreen(px, py);
-  ctx.fillStyle = getColor(darkColor, lightColor);
-  ctx.beginPath();
-  ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
-  ctx.fill();
-}
-
-// Функция рисования текста (только при достаточно крупном масштабе)
-function drawText(text, px, py, darkColor, lightColor, fontSize = 10, align = "center") {
-  if (scale < 0.5) return; // Не показывать текст при маленьком масштабе
-  
-  const p = toScreen(px, py);
-  ctx.font = `${fontSize}px Arial`;
-  ctx.fillStyle = getColor(darkColor, lightColor);
-  ctx.textAlign = align;
-  ctx.textBaseline = "middle";
-  ctx.fillText(text, p.x, p.y);
-}
-
-function draw() {
-  // Очистка с учётом режима
-  if (darkMode) {
-    ctx.fillStyle = "#111";
-  } else {
-    ctx.fillStyle = "#fff";
-  }
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  
-  const cx = 0;
-  const cy = 0;
-
-  const cosA = Math.cos(angle);
-  const sinA = Math.sin(angle);
-
-  // --- ГОРИЗОНТАЛЬНАЯ ОСЬ (лабораторная система) ---
-  drawLine(-vertLineLength, cy, vertLineLength, cy, "#0ff", "#08f", 1);
-  
-  // КРЕСТ (движущаяся система) - ПОВОРАЧИВАЕТСЯ
-  const ctX0 = cx - sinA * vertLineLength/2;
-  const ctY0 = cy - cosA * vertLineLength/2;
-  const ctX1 = cx + sinA * vertLineLength/2;
-  const ctY1 = cy + cosA * vertLineLength/2;
-
-  const xX0 = cx - cosA * vertLineLength/2;
-  const xY0 = cy + sinA * vertLineLength/2;
-  const xX1 = cx + cosA * vertLineLength/2;
-  const xY1 = cy - sinA * vertLineLength/2;
-
-  // ct′ (голубая) - наклонная ось времени движущейся системы
-  drawLine(ctX0, ctY0, ctX1, ctY1, "#0ff", "#08f", 1);
-
-  // x′ (СЕРАЯ) - наклонная пространственная ось движущейся системы
-  drawLine(xX0, xY0, xX1, xY1, "#888", "#666", 1);
-
-  // ВЕКТОРЫ ДЛЯ ОСЕЙ
-  const ctDirX = ctX1 - ctX0;
-  const ctDirY = ctY1 - ctY0;
-  const ctLength = Math.sqrt(ctDirX*ctDirX + ctDirY*ctDirY);
-  const ctUnitX = ctDirX / ctLength;
-  const ctUnitY = ctDirY / ctLength;
-  const ctPerpX = -ctUnitY;
-  const ctPerpY = ctUnitX;
-  
-  const xDirX = xX1 - xX0;
-  const xDirY = xY1 - xY0;
-  const xLength = Math.sqrt(xDirX*xDirX + xDirY*xDirY);
-  const xUnitX = xDirX / xLength;
-  const xUnitY = xDirY / xLength;
-  const xPerpX = -xUnitY;
-  const xPerpY = xUnitX;
-  
-  // ОТМЕТКИ И ЦИФРЫ НА ГОЛУБОЙ ОСИ (ct′)
-  for(let sec = 1; sec <= secondsPerSide; sec++) {
-    const distance = sec * lineSpacing;
-    
-    // БОЛЬШИЕ ОТМЕТКИ (1.0 сек)
-    const bigX1 = distance * ctUnitX;
-    const bigY1 = distance * ctUnitY;
-    drawMark(bigX1, bigY1, ctPerpX, ctPerpY, 14, "#0ff", "#08f", 1.5);
-    // Цифры на голубой оси (только при масштабе > 0.5)
-    if (scale > 0.5) {
-      drawText(sec.toString(), 
-               bigX1 + ctPerpX * 15, 
-               bigY1 + ctPerpY * 15, 
-               "#0ff", "#08f", 12);
-    }
-    
-    const bigX2 = -distance * ctUnitX;
-    const bigY2 = -distance * ctUnitY;
-    drawMark(bigX2, bigY2, ctPerpX, ctPerpY, 14, "#0ff", "#08f", 1.5);
-    if (scale > 0.5) {
-      drawText((-sec).toString(), 
-               bigX2 + ctPerpX * 15, 
-               bigY2 + ctPerpY * 15, 
-               "#0ff", "#08f", 12);
-    }
-    
-    // ОТМЕТКИ 0.5 сек
-    const halfDistance = distance - halfSpacing;
-    const halfX1 = halfDistance * ctUnitX;
-    const halfY1 = halfDistance * ctUnitY;
-    drawMark(halfX1, halfY1, ctPerpX, ctPerpY, 10, "#0aa", "#06a", 1.0, "dashed");
-    
-    const halfX2 = -halfDistance * ctUnitX;
-    const halfY2 = -halfDistance * ctUnitY;
-    drawMark(halfX2, halfY2, ctPerpX, ctPerpY, 10, "#0aa", "#06a", 1.0, "dashed");
-  }
-  
-  // МЕЛКИЕ ОТМЕТКИ (0.1 сек) НА ГОЛУБОЙ ОСИ
-  const smallMarksPerSide = secondsPerSide * 10;
-  for(let tenth = 1; tenth <= smallMarksPerSide; tenth++) {
-    if (tenth % 5 === 0) continue;
-    
-    const distance = tenth * smallSpacing;
-    const smallX1 = distance * ctUnitX;
-    const smallY1 = distance * ctUnitY;
-    
-    drawPoint(smallX1, smallY1, 2, "#099", "#057");
-    
-    const smallX2 = -distance * ctUnitX;
-    const smallY2 = -distance * ctUnitY;
-    drawPoint(smallX2, smallY2, 2, "#099", "#057");
-  }
-
-  // ВЕРТИКАЛЬНЫЕ ЛИНИИ (мировые линии объектов в лабораторной системе)
-  for(let i = -10; i <= 10; i++){ 
-    const t = i / 10; 
-    const px = xX0 + (xX1 - xX0) * (0.5 + t/2); 
-    const py = xY0 + (xY1 - xY0) * (0.5 + t/2);
-    
-    // ВЕРТИКАЛЬНЫЕ ЛИНИИ
-    drawLine(
-      px, py - vertLineLength/2,
-      px, py + vertLineLength/2,
-      "#888", "#666",
-      1
-    );
-    
-    // ОТМЕТКИ И ЦИФРЫ НА ВЕРТИКАЛЬНЫХ ЛИНИЯХ
-    for(let sec = 1; sec <= secondsPerSide; sec++) {
-      const distance = sec * lineSpacing;
-      
-      // БОЛЬШИЕ ОТМЕТКИ (1.0 сек) - ВВЕРХ
-      const upX = px;
-      const upY = py - distance;
-      drawMark(upX, upY, 1, 0, 12, "#888", "#666", 1.5);
-      // Цифры на вертикальных линиях (только при масштабе > 0.5)
-      if (scale > 0.5) {
-        drawText(sec.toString(), upX - 12, upY, "#888", "#666", 10, "right");
-      }
-      
-      // БОЛЬШИЕ ОТМЕТКИ (1.0 сек) - ВНИЗ
-      const downX = px;
-      const downY = py + distance;
-      drawMark(downX, downY, 1, 0, 12, "#888", "#666", 1.5);
-      if (scale > 0.5) {
-        drawText((-sec).toString(), downX - 12, downY, "#888", "#666", 10, "right");
-      }
-      
-      // ОТМЕТКИ 0.5 сек
-      const halfDistance = distance - halfSpacing;
-      const halfUpX = px;
-      const halfUpY = py - halfDistance;
-      drawMark(halfUpX, halfUpY, 1, 0, 9, "#888", "#666", 1.0, "dashed");
-      
-      const halfDownX = px;
-      const halfDownY = py + halfDistance;
-      drawMark(halfDownX, halfDownY, 1, 0, 9, "#888", "#666", 1.0, "dashed");
-    }
-    
-    // МЕЛКИЕ ОТМЕТКИ (0.1 сек) на вертикальных линиях
-    for(let tenth = 1; tenth <= secondsPerSide * 10; tenth++) {
-      if (tenth % 5 === 0) continue;
-      
-      const distance = tenth * smallSpacing;
-      const upX = px;
-      const upY = py - distance;
-      
-      drawPoint(upX, upY, 1.5, "#888", "#666");
-      
-      const downX = px;
-      const downY = py + distance;
-      drawPoint(downX, downY, 1.5, "#888", "#666");
-    }
-    
-    // Подписи для вертикальных линий (расстояния)
-    if (scale > 0.7 && i !== 0) {
-      drawText(i.toString(), px, py + 20, "#888", "#666", 10);
-    }
-  }
-
-  // Центр креста (начало координат)
-  const center = toScreen(0, 0);
-  ctx.fillStyle = getColor("#fff", "#000");
-  ctx.beginPath();
-  ctx.arc(center.x, center.y, 4, 0, Math.PI * 2);
-  ctx.fill();
-
-  requestAnimationFrame(draw);
-}
-
-// Инициализация
-updateInfo();
-draw();
-</script>
-</body>
-    </html>
+  scale = Math.max(0.1, scale / 1.
