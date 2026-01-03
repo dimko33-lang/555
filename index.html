@@ -571,10 +571,10 @@ function draw() {
     const bigY2 = -distance * ctUnitY;
     drawMark(bigX2, bigY2, ctPerpX, ctPerpY, 14, "#0ff", "#08f", 1.5);
     if (scale > 0.5) {
-      // ИСПРАВЛЕНО: отрицательные значения в отрицательном направлении оси
+      // ИСПРАВЛЕНО: отрицательные значения в отрицательном направлении оси, знаки минус снизу
       drawText((-sec).toString(), 
-               bigX2 + ctPerpX * 15, 
-               bigY2 + ctPerpY * 15, 
+               bigX2 - ctPerpX * 15,  // Изменено с + на -
+               bigY2 - ctPerpY * 15,  // Изменено с + на -
                "#0ff", "#08f", 10);
     }
     
@@ -637,7 +637,8 @@ function draw() {
       const downY = py + distance;
       drawMark(downX, downY, 1, 0, 12, "#888", "#666", 1.5);
       if (scale > 0.5) {
-        drawText((-sec).toString(), downX - 8, downY, "#888", "#666", 10, "right");
+        // ИСПРАВЛЕНО: отрицательные числа справа от линии
+        drawText((-sec).toString(), downX + 8, downY, "#888", "#666", 10, "left");
       }
       
       // ОТМЕТКИ 0.5 сек
