@@ -560,10 +560,10 @@ function draw() {
     drawMark(bigX1, bigY1, ctPerpX, ctPerpY, 14, "#0ff", "#08f", 1.5);
     // Цифры на голубой оси (только при масштабе > 0.5)
     if (scale > 0.5) {
-      // Положительные числа теперь снизу (знак изменен с + на -)
-      drawText(sec.toString(), 
-               bigX1 - ctPerpX * 15,
-               bigY1 - ctPerpY * 15, 
+      // ПРОСТО МЕНЯЕМ ТЕКСТ МЕСТАМИ: здесь теперь отрицательные числа
+      drawText((-sec).toString(), 
+               bigX1 + ctPerpX * 15,
+               bigY1 + ctPerpY * 15, 
                "#0ff", "#08f", 10);
     }
     
@@ -571,10 +571,10 @@ function draw() {
     const bigY2 = -distance * ctUnitY;
     drawMark(bigX2, bigY2, ctPerpX, ctPerpY, 14, "#0ff", "#08f", 1.5);
     if (scale > 0.5) {
-      // Отрицательные числа теперь сверху (знак изменен с - на +)
-      drawText((-sec).toString(), 
-               bigX2 + ctPerpX * 15,
-               bigY2 + ctPerpY * 15, 
+      // ПРОСТО МЕНЯЕМ ТЕКСТ МЕСТАМИ: здесь теперь положительные числа
+      drawText(sec.toString(), 
+               bigX2 - ctPerpX * 15,
+               bigY2 - ctPerpY * 15, 
                "#0ff", "#08f", 10);
     }
     
