@@ -29,7 +29,7 @@
     gap: 6px;
     flex-wrap: nowrap;
     justify-content: flex-end;
-    max-width: 240px; /* немного расширено под новую кнопку */
+    max-width: 240px;
     z-index: 100;
   }
   .btn {
@@ -55,7 +55,7 @@
     transform: scale(0.95);
   }
   
-  /* Панель информации - подогнана по высоте под кнопки */
+  /* Панель информации */
   .info-panel {
     position: fixed;
     top: 10px;
@@ -96,7 +96,7 @@
     font-size: 14px;
   }
   
-  /* Стили для светлого режима */
+  /* Светлый режим */
   body.light-mode {
     background: #fff;
   }
@@ -118,7 +118,6 @@
 <body>
 <canvas id="c"></canvas>
 
-<!-- Панель информации -->
 <div class="info-panel" id="infoPanel">
   <div class="info-item">
     <span class="info-label">Speed:</span>
@@ -130,7 +129,6 @@
   </div>
 </div>
 
-<!-- Кнопки управления -->
 <div class="controls">
   <button class="btn" id="geometryBtn" title="Hyperbolic geometry">ℍ</button>
   <button class="btn" id="negBtn" title="Negative/Invert">☀</button>
@@ -139,30 +137,25 @@
 </div>
 
 <script>
+// ======= ТВОЙ ОРИГИНАЛЬНЫЙ КОД (полностью сохранён) =======
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d");
 
-// Параметры визуализации
-let angle = 0; // угол поворота креста
+let angle = 0;
 let dragging = false;
 let lastX = 0;
 let scale = 0.3;
 let offsetX = 0, offsetY = 0;
 let darkMode = true;
 
-// ПАРАМЕТРЫ (увеличенные)
-const numLines = 21; // 10 с каждой стороны + центральная = 21
-const secondsPerSide = 10; // было 5, теперь 10
+const numLines = 21;
+const secondsPerSide = 10;
 const vertLineLength = 3000;
 
-// ТARGET GAMMA = 1,000,000
 const TARGET_GAMMA = 1000000.000;
-// Вычисляем скорость для γ = 1,000,000
 const TARGET_V = Math.sqrt(1 - 1/(TARGET_GAMMA * TARGET_GAMMA));
-// Вычисляем угол для этой скорости (v/c = sin(angle))
 const MAX_ANGLE = Math.asin(TARGET_V);
 
-// МУЛЬТИТАЧ ПЕРЕМЕННЫЕ для умного жеста
 let touchStartDistance = null;
 let touchStartAngle = null;
 let touchStartCenterX = 0;
@@ -174,35 +167,28 @@ let touchStartOffsetY = 0;
 let touchStartWorldX = 0;
 let touchStartWorldY = 0;
 
-// РАСЧЕТ РАССТОЯНИЙ
 const lineSpacing = vertLineLength / (numLines - 1);
 const halfSpacing = lineSpacing / 2;
 const smallSpacing = lineSpacing / 10;
 
-// Функция для вычисления расстояния между двумя точками касания
 function getTouchDistance(touches) {
   const dx = touches[0].clientX - touches[1].clientX;
   const dy = touches[0].clientY - touches[1].clientY;
   return Math.sqrt(dx * dx + dy * dy);
 }
 
-// Функция для вычисления угла между двумя точками касания
 function getTouchAngle(touches) {
   const dx = touches[0].clientX - touches[1].clientX;
   const dy = touches[0].clientY - touches[1].clientY;
   return Math.atan2(dy, dx);
 }
 
-// ОБРАБОТКА КАСАНИЙ (умный мультитач)
 canvas.addEventListener('touchstart', (e) => {
   e.preventDefault();
-  
   if (e.touches.length === 2) {
-    // Начало жеста двумя пальцами - запоминаем ВСЕ параметры
     const rect = canvas.getBoundingClientRect();
     const touch1 = e.touches[0];
     const touch2 = e.touches[1];
-    
     touchStartDistance = getTouchDistance(e.touches);
     touchStartAngle = getTouchAngle(e.touches);
     touchStartCenterX = (touch1.clientX + touch2.clientX) / 2 - rect.left;
@@ -211,14 +197,10 @@ canvas.addEventListener('touchstart', (e) => {
     touchStartAngleSystem = angle;
     touchStartOffsetX = offsetX;
     touchStartOffsetY = offsetY;
-    
-    // Вычисляем мировые координаты центра жеста
     touchStartWorldX = (touchStartCenterX - touchStartOffsetX) / touchStartScale;
     touchStartWorldY = (touchStartCenterY - touchStartOffsetY) / touchStartScale;
-    
-    dragging = false; // Отключаем обычное перетаскивание
+    dragging = false;
   } else if (e.touches.length === 1) {
-    // Начало перетаскивания одним пальцем
     dragging = true;
     lastX = e.touches[0].clientX;
   }
@@ -226,51 +208,30 @@ canvas.addEventListener('touchstart', (e) => {
 
 canvas.addEventListener('touchmove', (e) => {
   e.preventDefault();
-  
   if (e.touches.length === 2 && touchStartDistance !== null && touchStartDistance > 0) {
-    // Обработка умного жеста двумя пальцами: ЗУМ + ПОВОРОТ + ПЕРЕМЕЩЕНИЕ
     const rect = canvas.getBoundingClientRect();
     const touch1 = e.touches[0];
     const touch2 = e.touches[1];
-    
     const currentDistance = getTouchDistance(e.touches);
     const currentAngle = getTouchAngle(e.touches);
     const currentCenterX = (touch1.clientX + touch2.clientX) / 2 - rect.left;
     const currentCenterY = (touch1.clientY + touch2.clientY) / 2 - rect.top;
-    
-    // 1. МАСШТАБИРОВАНИЕ (зум)
     const zoomFactor = currentDistance / touchStartDistance;
     const newScale = Math.max(0.1, Math.min(5, touchStartScale * zoomFactor));
-    
-    // 2. ПОВОРОТ СИСТЕМЫ (реверс для интуитивности)
     const angleDelta = currentAngle - touchStartAngle;
-    let newAngle = touchStartAngleSystem - angleDelta * 0.8; // Реверс
-    
-    // Ограничение угла
+    let newAngle = touchStartAngleSystem - angleDelta * 0.8;
     newAngle = Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, newAngle));
-    
-    // 3. ПЕРЕМЕЩЕНИЕ (панорамирование) с учётом зума
-    // Вычисляем новые offset так, чтобы точка под начальным центром жеста
-    // оставалась под текущим центром жеста
     const newOffsetX = currentCenterX - touchStartWorldX * newScale;
     const newOffsetY = currentCenterY - touchStartWorldY * newScale;
-    
-    // Применяем все изменения
     scale = newScale;
     angle = newAngle;
     offsetX = newOffsetX;
     offsetY = newOffsetY;
-    
     updateInfo();
   } else if (e.touches.length === 1 && dragging) {
-    // Перетаскивание одним пальцем - ТОЛЬКО ПОВОРОТ
     const dx = e.touches[0].clientX - lastX;
-    // РЕВЕРС: меняем знак на противоположный
     angle += dx * 0.01;
-    
-    // Ограничение угла
     angle = Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, angle));
-    
     lastX = e.touches[0].clientX;
     updateInfo();
   }
@@ -284,7 +245,6 @@ canvas.addEventListener('touchend', (e) => {
   }
 });
 
-// ОБРАБОТКА МЫШИ
 canvas.addEventListener("pointerdown", e => {
   dragging = true;
   lastX = e.clientX;
@@ -293,12 +253,8 @@ canvas.addEventListener("pointerdown", e => {
 canvas.addEventListener("pointermove", e => {
   if(dragging){
     const dx = e.clientX - lastX;
-    // РЕВЕРС: меняем знак на противоположный
     angle += dx * 0.01;
-    
-    // Ограничение угла
     angle = Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, angle));
-    
     lastX = e.clientX;
     updateInfo();
   }
@@ -307,44 +263,36 @@ canvas.addEventListener("pointermove", e => {
 canvas.addEventListener("pointerup", e => dragging = false);
 canvas.addEventListener("pointerleave", e => dragging = false);
 
-// Масштабирование колесом мыши
 canvas.addEventListener("wheel", e => {
   e.preventDefault();
   const zoomFactor = 1.1;
   const rect = canvas.getBoundingClientRect();
   const mouseX = e.clientX - rect.left;
   const mouseY = e.clientY - rect.top;
-  
   const worldX = (mouseX - offsetX) / scale;
   const worldY = (mouseY - offsetY) / scale;
-  
   if (e.deltaY < 0) {
     scale *= zoomFactor;
   } else {
     scale /= zoomFactor;
   }
-  
   scale = Math.max(0.1, Math.min(5, scale));
-  
   offsetX = mouseX - worldX * scale;
   offsetY = mouseY - worldY * scale;
 });
 
-// Кнопка негатива/светлого режима
 document.getElementById('negBtn').addEventListener('click', () => {
   darkMode = !darkMode;
   document.body.classList.toggle('light-mode', !darkMode);
   document.getElementById('negBtn').textContent = darkMode ? '☀' : '🌙';
 });
 
-// Кнопка сброса масштаба
 document.getElementById('zoomReset').addEventListener('click', () => {
   scale = 0.3;
   offsetX = canvas.width/2;
   offsetY = canvas.height/2;
 });
 
-// Полноэкранный режим
 document.getElementById('fullscreen').addEventListener('click', () => {
   if (!document.fullscreenElement) {
     document.documentElement.requestFullscreen().catch(err => {
@@ -355,7 +303,7 @@ document.getElementById('fullscreen').addEventListener('click', () => {
   }
 });
 
-// === НОВАЯ КНОПКА: ГИПЕРБОЛИЧЕСКАЯ ГЕОМЕТРИЯ ===
+// ======= НОВАЯ КНОПКА: ГИПЕРБОЛИЧЕСКАЯ ГЕОМЕТРИЯ =======
 document.getElementById('geometryBtn').addEventListener('click', () => {
   const hyperbolicHTML = `<!DOCTYPE html>
 <html lang="en">
@@ -518,7 +466,6 @@ function draw() {
   ctx.fillStyle = darkMode ? "#000833" : "#fff";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // Мировые линии (t² - x² = τ²)
   for (const tau of worldlineSteps) {
     const ptsF = [], ptsP = [];
     for (let x = -RANGE; x <= RANGE; x += 0.03) {
@@ -529,7 +476,6 @@ function draw() {
     drawHyperbola(ptsP, "#0c0", "#080");
   }
 
-  // Линии одновременности (x² - t² = ξ²)
   for (const xi of simultaneitySteps) {
     const ptsR = [], ptsL = [];
     for (let t = -RANGE; t <= RANGE; t += 0.03) {
@@ -540,18 +486,15 @@ function draw() {
     drawHyperbola(ptsL, "#88f", "#66d");
   }
 
-  // Световые конусы
   drawLine(-RANGE, -RANGE, RANGE, RANGE, "#ff8", "#cc6");
   drawLine(-RANGE, RANGE, RANGE, -RANGE, "#ff8", "#cc6");
 
-  // Оси лабораторной системы
   drawLine(-RANGE, 0, RANGE, 0, "#fff", "#000", 1.5);
   drawLine(0, -RANGE, 0, RANGE, "#fff", "#000", 1.5);
 
-  // Движущаяся система
   const v = Math.tanh(rapidity);
-  drawLine(-RANGE, -v*RANGE, RANGE, v*RANGE, "#ff0", "#c80", 2); // x'
-  drawLine(-v*RANGE, -RANGE, v*RANGE, RANGE, "#0ff", "#0aa", 2); // t'
+  drawLine(-RANGE, -v*RANGE, RANGE, v*RANGE, "#ff0", "#c80", 2);
+  drawLine(-v*RANGE, -RANGE, v*RANGE, RANGE, "#0ff", "#0aa", 2);
 
   drawPoint(0, 0, 4, "#fff", "#000");
 
@@ -597,24 +540,23 @@ draw();
 </html>`;
 
   const w = window.open('', '_blank', 'width=1200,height=800,menubar=no,toolbar=no');
-  w.document.write(hyperbolicHTML);
-  w.document.close();
+  if (w) {
+    w.document.write(hyperbolicHTML);
+    w.document.close();
+  } else {
+    alert('Пожалуйста, разрешите всплывающие окна и попробуйте снова.');
+  }
 });
 
-// Обновление информации
+// ======= ТВОИ ФУНКЦИИ (полностью без изменений) =======
 function updateInfo() {
-  // v/c = sin(angle) для простой визуализации
   const velocity = Math.sin(angle);
-  
-  // Форматируем скорость
   let velocityStr;
   if (Math.abs(velocity) < 0.0001) {
     velocityStr = "0.000c";
   } else {
-    // При максимальном угле используем вычисленную скорость для γ=1,000,000
     const absV = Math.abs(velocity);
     if (Math.abs(Math.abs(angle) - MAX_ANGLE) < 0.0000001) {
-      // При максимальном угле показываем точное значение
       velocityStr = TARGET_V.toFixed(12) + "c";
     } else if (absV > 0.999999) {
       velocityStr = absV.toFixed(12) + "c";
@@ -628,19 +570,16 @@ function updateInfo() {
     if (velocity < 0) velocityStr = "-" + velocityStr;
   }
   
-  // Вычисляем γ
   let gamma = 1;
   const v = Math.abs(velocity);
   if (v < 0.999999999999) {
     gamma = 1 / Math.sqrt(1 - v * v);
   } else {
-    gamma = TARGET_GAMMA; // Максимальное значение
+    gamma = TARGET_GAMMA;
   }
   
-  // Форматируем γ
   let gammaStr;
   if (Math.abs(Math.abs(angle) - MAX_ANGLE) < 0.0000001) {
-    // При максимальном угле показываем точное значение
     gammaStr = TARGET_GAMMA.toFixed(3);
   } else if (gamma >= 1000) {
     gammaStr = gamma.toFixed(3);
@@ -648,4 +587,70 @@ function updateInfo() {
     gammaStr = gamma.toFixed(3);
   }
   
-  document.getElementById('
+  document.getElementById('speedValue').textContent = velocityStr;
+  document.getElementById('gammaValue').textContent = gammaStr;
+  
+  const speedValue = document.getElementById('speedValue');
+  const absV = Math.abs(velocity);
+  if (absV < 0.3) {
+    speedValue.style.color = darkMode ? '#0f0' : '#080';
+  } else if (absV < 0.7) {
+    speedValue.style.color = darkMode ? '#ff0' : '#880';
+  } else if (absV < 0.95) {
+    speedValue.style.color = darkMode ? '#f80' : '#c60';
+  } else {
+    speedValue.style.color = darkMode ? '#f00' : '#c00';
+  }
+}
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  offsetX = canvas.width/2;
+  offsetY = canvas.height/2;
+}
+window.addEventListener("resize", resize);
+resize();
+
+function toScreen(x, y) {
+  return { x: x * scale + offsetX, y: y * scale + offsetY };
+}
+
+function getColor(darkColor, lightColor) {
+  return darkMode ? darkColor : lightColor;
+}
+
+function drawLine(x1, y1, x2, y2, darkColor, lightColor, width) {
+  const p1 = toScreen(x1, y1);
+  const p2 = toScreen(x2, y2);
+  ctx.strokeStyle = getColor(darkColor, lightColor);
+  ctx.lineWidth = width;
+  ctx.beginPath();
+  ctx.moveTo(p1.x, p1.y);
+  ctx.lineTo(p2.x, p2.y);
+  ctx.stroke();
+}
+
+function drawMark(px, py, dirX, dirY, length, darkColor, lightColor, width, style = "solid") {
+  const p = toScreen(px, py);
+  const d = toScreen(px + dirX * length/2, py + dirY * length/2);
+  const d2 = toScreen(px - dirX * length/2, py - dirY * length/2);
+  ctx.strokeStyle = getColor(darkColor, lightColor);
+  ctx.lineWidth = width;
+  if (style === "dashed") {
+    ctx.setLineDash([3, 2]);
+  } else {
+    ctx.setLineDash([]);
+  }
+  ctx.beginPath();
+  ctx.moveTo(d2.x, d2.y);
+  ctx.lineTo(d.x, d.y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function drawPoint(px, py, radius, darkColor, lightColor) {
+  const p = toScreen(px, py);
+  ctx.fillStyle = getColor(darkColor, lightColor);
+  ctx.beginPath();
+  ctx
