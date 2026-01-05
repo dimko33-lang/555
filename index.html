@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <title>SR Visualization</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<!-- ФИКСАЦИЯ ТЕМЫ: принудительно устанавливаем темную тему -->
+<!-- Фиксация темной темы -->
 <style>
   :root { color-scheme: dark; }
 </style>
@@ -15,7 +15,7 @@
     overflow:hidden; 
     touch-action: none; 
     font-family: Arial, sans-serif;
-    color: white; /* Фиксированный цвет текста для темной темы */
+    color: white;
   }
   canvas { 
     display:block;
@@ -39,29 +39,33 @@
     width: 35px;
     height: 35px;
     border-radius: 5px;
-    background: rgba(0,0,0,0.7);
+    /* ИСПРАВЛЕНО: Темно-синий фон вместо черного */
+    background: rgba(0, 8, 51, 0.7); /* #000833 с прозрачностью */
     border: 1px solid rgba(255,255,255,0.3);
     color: white;
-    font-size: 16px; /* Уменьшен шрифт для всех кнопок */
+    font-size: 16px;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     user-select: none;
-    transition: all 0.2s;
+    /* ИСПРАВЛЕНО: Убрано transform: scale из :active */
+    transition: background 0.2s;
     flex-shrink: 0;
   }
   .btn:hover {
-    background: rgba(50,50,50,0.9);
+    background: rgba(0, 20, 80, 0.8);
   }
+  /* ИСПРАВЛЕНО: Убран эффект нажатия */
   .btn:active {
-    transform: scale(0.95);
+    background: rgba(0, 30, 100, 0.9);
   }
   .info-panel {
     position: fixed;
     top: 8px;
     left: 8px;
-    background: rgba(0,0,0,0.7);
+    /* ИСПРАВЛЕНО: Темно-синий фон вместо черного */
+    background: rgba(0, 8, 51, 0.7); /* #000833 с прозрачностью */
     color: white;
     padding: 0 8px;
     border-radius: 5px;
@@ -107,11 +111,10 @@
     color: #0ff;
     font-size: 10px;
   }
-  /* УДАЛЕНЫ ВСЕ СТИЛИ ДЛЯ .light-mode */
 </style>
 </head>
 <body>
-<!-- УДАЛЕН СКРИПТ ИНИЦИАЛИЗАЦИИ ТЕМЫ -->
+
 <canvas id="c"></canvas>
 
 <div class="info-panel" id="infoPanel">
@@ -127,9 +130,8 @@
 
 <div class="controls">
   <button class="btn" id="modeBtn" title="Toggle Diagram">M</button>
-  <!-- УДАЛЕНА КНОПКА ПЕРЕКЛЮЧЕНИЯ ТЕМЫ -->
   <button class="btn" id="zoomReset" title="Reset scale">↻</button>
-  <!-- УПРОЩЕННАЯ КНОПКА FULLSCREEN -->
+  <!-- Кнопка FS теперь всегда видна -->
   <button class="btn" id="fullscreen" title="Fullscreen mode">FS</button>
 </div>
 
@@ -138,7 +140,6 @@ const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d");
 
 // Параметры визуализации
-// УДАЛЕНА ПЕРЕМЕННАЯ darkMode и связанная с ней логика
 let angle = 0;
 let dragging = false;
 let lastX = 0;
@@ -172,6 +173,49 @@ let touchStartOffsetX = 0;
 let touchStartOffsetY = 0;
 let touchStartWorldX = 0;
 let touchStartWorldY = 0;
+
+// === ИСПРАВЛЕНИЕ: ЕДИНАЯ ФУНКЦИЯ ДЛЯ ПРОВЕРКИ FULLSCREEN API ===
+function isFullscreenSupported() {
+  // Проверяем все возможные варианты API
+  return !!(document.documentElement.requestFullscreen ||
+            document.documentElement.webkitRequestFullscreen ||
+            document.documentElement.mozRequestFullScreen ||
+            document.documentElement.msRequestFullscreen);
+}
+
+function getFullscreenElement() {
+  return document.fullscreenElement ||
+         document.webkitFullscreenElement ||
+         document.mozFullScreenElement ||
+         document.msFullscreenElement;
+}
+
+function requestFullscreen(element) {
+  if (element.requestFullscreen) {
+    return element.requestFullscreen();
+  } else if (element.webkitRequestFullscreen) {
+    return element.webkitRequestFullscreen();
+  } else if (element.mozRequestFullScreen) {
+    return element.mozRequestFullScreen();
+  } else if (element.msRequestFullscreen) {
+    return element.msRequestFullscreen();
+  }
+  return Promise.reject(new Error('Fullscreen API not supported'));
+}
+
+function exitFullscreen() {
+  if (document.exitFullscreen) {
+    return document.exitFullscreen();
+  } else if (document.webkitExitFullscreen) {
+    return document.webkitExitFullscreen();
+  } else if (document.mozCancelFullScreen) {
+    return document.mozCancelFullScreen();
+  } else if (document.msExitFullscreen) {
+    return document.msExitFullscreen();
+  }
+  return Promise.reject(new Error('Fullscreen API not supported'));
+}
+// === КОНЕЦ ИСПРАВЛЕНИЯ ===
 
 // Функции управления (ваш оригинальный код)...
 function getTouchDistance(touches) {
@@ -292,27 +336,21 @@ document.getElementById('modeBtn').addEventListener('click', () => {
 
 // Функция для подгонки масштаба, чтобы диаграмма помещалась на экране
 function fitToScreen() {
-  // Размер диаграммы (обе диаграммы одинакового размера)
   const extent = lineSpacing * 10;
-  const diagramSize = extent * 2; // Полный размер диаграммы (от -extent до +extent)
+  const diagramSize = extent * 2;
   
-  // Получаем размеры canvas
   const canvasWidth = canvas.width;
   const canvasHeight = canvas.height;
   
-  // Рассчитываем масштаб так, чтобы диаграмма помещалась с небольшими отступами
-  const padding = 40; // Отступы от краев в пикселях
+  const padding = 40;
   const availableWidth = canvasWidth - padding * 2;
   const availableHeight = canvasHeight - padding * 2;
   
-  // Масштаб для ширины и высоты
   const scaleX = availableWidth / diagramSize;
   const scaleY = availableHeight / diagramSize;
   
-  // Используем минимальный масштаб, чтобы диаграмма помещалась полностью
   scale = Math.min(scaleX, scaleY);
   
-  // Центрируем диаграмму
   offsetX = canvasWidth / 2;
   offsetY = canvasHeight / 2;
 }
@@ -321,38 +359,54 @@ document.getElementById('zoomReset').addEventListener('click', () => {
   fitToScreen();
 });
 
-// --- МАКСИМАЛЬНО ПРОСТАЯ И НАДЕЖНАЯ КНОПКА FULLSCREEN --- //
+// === ИСПРАВЛЕННАЯ КНОПКА FULLSCREEN ===
 const fullscreenBtn = document.getElementById('fullscreen');
 
-// Проверяем поддержку Fullscreen API и показываем/скрываем кнопку
-if (!document.documentElement.requestFullscreen && !document.documentElement.webkitRequestFullscreen) {
-  // Если API не поддерживается (например, старый Safari на iPad), скрываем кнопку
-  fullscreenBtn.style.display = 'none';
-} else {
-  // Показываем кнопку и настраиваем её работу
+// Проверяем поддержку Fullscreen API
+if (isFullscreenSupported()) {
+  // Показываем кнопку (она уже видна по умолчанию)
   fullscreenBtn.style.display = 'flex';
   
+  // Функция для обновления состояния кнопки
+  function updateFullscreenButton() {
+    const isFullscreen = !!getFullscreenElement();
+    fullscreenBtn.textContent = isFullscreen ? 'FS' : 'FS'; // Можно изменить на разные символы
+    fullscreenBtn.title = isFullscreen ? 'Exit fullscreen' : 'Fullscreen mode';
+  }
+  
+  // Обработчик клика
   fullscreenBtn.addEventListener('click', () => {
-    const elem = document.documentElement;
+    const isFullscreen = !!getFullscreenElement();
     
-    if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+    if (!isFullscreen) {
       // Вход в полноэкранный режим
-      if (elem.requestFullscreen) {
-        elem.requestFullscreen();
-      } else if (elem.webkitRequestFullscreen) {
-        elem.webkitRequestFullscreen();
-      }
+      requestFullscreen(document.documentElement).catch(err => {
+        console.log('Fullscreen error:', err);
+        // Можно показать сообщение пользователю
+        fullscreenBtn.textContent = 'ERR';
+        setTimeout(() => updateFullscreenButton(), 1000);
+      });
     } else {
       // Выход из полноэкранного режима
-      if (document.exitFullscreen) {
-        document.exitFullscreen();
-      } else if (document.webkitExitFullscreen) {
-        document.webkitExitFullscreen();
-      }
+      exitFullscreen().catch(err => {
+        console.log('Exit fullscreen error:', err);
+      });
     }
   });
+  
+  // Слушаем изменения состояния полноэкранного режима
+  document.addEventListener('fullscreenchange', updateFullscreenButton);
+  document.addEventListener('webkitfullscreenchange', updateFullscreenButton);
+  document.addEventListener('mozfullscreenchange', updateFullscreenButton);
+  document.addEventListener('MSFullscreenChange', updateFullscreenButton);
+  
+  // Инициализация кнопки
+  updateFullscreenButton();
+} else {
+  // Если Fullscreen API не поддерживается, скрываем кнопку
+  fullscreenBtn.style.display = 'none';
 }
-// --- КОНЕЦ КНОПКИ FULLSCREEN --- //
+// === КОНЕЦ ИСПРАВЛЕНИЯ ===
 
 function updateInfo() {
   const velocity = Math.sin(angle);
@@ -399,7 +453,6 @@ function updateInfo() {
   
   const speedValue = document.getElementById('speedValue');
   const absV = Math.abs(velocity);
-  // Цвета для скорости теперь фиксированы для темной темы
   if (absV < 0.3) {
     speedValue.style.color = '#0f0';
   } else if (absV < 0.7) {
@@ -427,9 +480,8 @@ function toScreen(x, y) {
   };
 }
 
-// Функция getColor теперь всегда возвращает темный вариант цвета
 function getColor(darkColor, lightColor) {
-  return darkColor; // Фиксированно возвращаем цвет для темной темы
+  return darkColor; // Всегда темная тема
 }
 
 function drawLine(x1, y1, x2, y2, darkColor, lightColor, width) {
