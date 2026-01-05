@@ -21,23 +21,23 @@
   }
   .controls {
     position: fixed;
-    top: 8px; /* Немного подняли */
-    right: 8px; /* Немного ближе к краю */
+    top: 8px;
+    right: 8px;
     display: flex;
-    gap: 4px; /* Уменьшили промежуток */
+    gap: 4px;
     flex-wrap: nowrap;
     justify-content: flex-end;
-    max-width: 150px; /* Уменьшили максимальную ширину */
+    max-width: 150px;
     z-index: 100;
   }
   .btn {
-    width: 35px; /* Было 44px, уменьшили на 20% */
-    height: 35px; /* Было 44px, уменьшили на 20% */
+    width: 35px;
+    height: 35px;
     border-radius: 5px;
     background: rgba(0,0,0,0.7);
     border: 1px solid rgba(255,255,255,0.3);
     color: white;
-    font-size: 18px; /* Уменьшили шрифт пропорционально */
+    font-size: 18px;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -54,53 +54,53 @@
   }
   .info-panel {
     position: fixed;
-    top: 8px; /* Немного подняли */
-    left: 8px; /* Немного ближе к краю */
+    top: 8px;
+    left: 8px;
     background: rgba(0,0,0,0.7);
     color: white;
-    padding: 0 8px; /* Уменьшили горизонтальные отступы */
+    padding: 0 8px;
     border-radius: 5px;
-    font-size: 11px; /* Уменьшили базовый шрифт */
+    font-size: 11px;
     border: 1px solid rgba(255,255,255,0.2);
-    min-width: 110px; /* Фиксированная минимальная ширина */
-    max-width: 110px; /* Фиксированная максимальная ширина */
-    width: 110px; /* Фиксированная ширина */
-    height: 35px; /* Было 44px, уменьшили на 20% */
-    z-index: 100;
+    min-width: 110px;
+    max-width: 110px;
+    width: 110px;
+    height: 35px;
+    z-index: 1000; /* УВЕЛИЧЕНО для Safari */
     display: flex;
     flex-direction: column;
     justify-content: center;
-    box-sizing: border-box; /* Чтобы padding учитывался в ширине */
+    box-sizing: border-box;
   }
   .info-item {
     margin: 0;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    min-width: 0; /* Позволяет сжиматься */
+    min-width: 0;
   }
   .info-label {
     color: #aaa;
-    font-size: 9px; /* Уменьшили */
+    font-size: 9px;
     white-space: nowrap;
-    flex-shrink: 0; /* Не сжимается */
+    flex-shrink: 0;
   }
   .info-value {
     font-weight: bold;
     font-family: 'Courier New', monospace;
     white-space: nowrap;
-    min-width: 0; /* Позволяет сжиматься */
+    min-width: 0;
     overflow: hidden;
-    text-overflow: ellipsis; /* Обрезаем текст если не помещается */
-    flex-shrink: 1; /* Может сжиматься */
+    text-overflow: ellipsis;
+    flex-shrink: 1;
   }
   .speed-value {
     color: #fa0;
-    font-size: 10px; /* Было 14px, уменьшили */
+    font-size: 10px;
   }
   .gamma-value {
     color: #0ff;
-    font-size: 10px; /* Было 14px, уменьшили */
+    font-size: 10px;
   }
   body.light-mode {
     background: #fff;
@@ -138,6 +138,7 @@
   <button class="btn" id="modeBtn" title="Toggle Diagram">M</button>
   <button class="btn" id="negBtn" title="Negative/Invert">☀</button>
   <button class="btn" id="zoomReset" title="Reset scale">↻</button>
+  <!-- КНОПКА С UNICODE СИМВОЛАМИ -->
   <button class="btn" id="fullscreen" title="Fullscreen mode">⛶</button>
 </div>
 
@@ -151,7 +152,7 @@ let dragging = false;
 let lastX = 0;
 let scale = 0.3;
 let offsetX = 0, offsetY = 0;
-let darkMode = true;
+let darkMode = true; // Начальное значение, но будет синхронизировано с системой
 let showMinkowski = false;
 
 // ПАРАМЕТРЫ ВАШЕЙ ОРИГИНАЛЬНОЙ ДИАГРАММЫ
@@ -298,11 +299,41 @@ document.getElementById('modeBtn').addEventListener('click', () => {
   document.getElementById('modeBtn').textContent = showMinkowski ? 'E' : 'M';
 });
 
-document.getElementById('negBtn').addEventListener('click', () => {
+// --- НАЧАЛО: ИСПРАВЛЕНИЯ ДЛЯ СИНХРОНИЗАЦИИ ТЕМЫ --- //
+const negBtn = document.getElementById('negBtn');
+const fullscreenBtn = document.getElementById('fullscreen');
+
+// 1. Функция для проверки системной темы
+function getSystemColorScheme() {
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+// 2. Синхронизация при загрузке
+window.addEventListener('DOMContentLoaded', () => {
+  const systemPrefersDark = getSystemColorScheme() === 'dark';
+  // Если настройка системы отличается от текущей, применяем системную
+  if (darkMode !== systemPrefersDark) {
+    darkMode = systemPrefersDark;
+    document.body.classList.toggle('light-mode', !darkMode);
+    negBtn.textContent = darkMode ? '☀' : '🌙';
+  }
+});
+
+// 3. Слушаем изменения системной темы в реальном времени
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+  darkMode = e.matches;
+  document.body.classList.toggle('light-mode', !darkMode);
+  negBtn.textContent = darkMode ? '☀' : '🌙';
+});
+
+// 4. Обработчик кнопки темы ДОЛЖЕН переключать тему принудительно
+negBtn.addEventListener('click', () => {
+  // Принудительное переключение темы, игнорируя системные настройки на время сессии
   darkMode = !darkMode;
   document.body.classList.toggle('light-mode', !darkMode);
-  document.getElementById('negBtn').textContent = darkMode ? '☀' : '🌙';
+  negBtn.textContent = darkMode ? '☀' : '🌙';
 });
+// --- КОНЕЦ: ИСПРАВЛЕНИЯ ДЛЯ СИНХРОНИЗАЦИИ ТЕМЫ --- //
 
 // Функция для подгонки масштаба, чтобы диаграмма помещалась на экране
 function fitToScreen() {
@@ -335,21 +366,32 @@ document.getElementById('zoomReset').addEventListener('click', () => {
   fitToScreen();
 });
 
-// ИСПРАВЛЕННАЯ КНОПКА ПОЛНОЭКРАННОГО РЕЖИМА
-const fullscreenBtn = document.getElementById('fullscreen');
-// Используем более надежный символ для кнопки полноэкранного режима
-fullscreenBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>';
+// --- НАЧАЛО: ИСПРАВЛЕНИЯ ДЛЯ КНОПКИ FULLSCREEN (UNICODE) --- //
+// Инициализация кнопки с Unicode символом
+fullscreenBtn.textContent = '⛶';
 
+// Функция для обновления иконки кнопки
+function updateFullscreenIcon() {
+  const isFullscreen = document.fullscreenElement || 
+                       document.webkitFullscreenElement || 
+                       document.mozFullScreenElement || 
+                       document.msFullscreenElement;
+  // Меняем символ в зависимости от состояния
+  fullscreenBtn.textContent = isFullscreen ? '🗖' : '⛶';
+}
+
+// Обработчик клика по кнопке
 fullscreenBtn.addEventListener('click', () => {
   if (!document.fullscreenElement && !document.webkitFullscreenElement) {
-    if (document.documentElement.requestFullscreen) {
-      document.documentElement.requestFullscreen();
-    } else if (document.documentElement.webkitRequestFullscreen) {
-      document.documentElement.webkitRequestFullscreen();
-    } else if (document.documentElement.mozRequestFullScreen) {
-      document.documentElement.mozRequestFullScreen();
-    } else if (document.documentElement.msRequestFullscreen) {
-      document.documentElement.msRequestFullscreen();
+    const elem = document.documentElement;
+    if (elem.requestFullscreen) {
+      elem.requestFullscreen();
+    } else if (elem.webkitRequestFullscreen) {
+      elem.webkitRequestFullscreen();
+    } else if (elem.mozRequestFullScreen) {
+      elem.mozRequestFullScreen();
+    } else if (elem.msRequestFullscreen) {
+      elem.msRequestFullscreen();
     }
   } else {
     if (document.exitFullscreen) {
@@ -364,24 +406,12 @@ fullscreenBtn.addEventListener('click', () => {
   }
 });
 
-// Обновляем иконку при изменении полноэкранного режима
+// Слушаем изменения состояния полноэкранного режима
 document.addEventListener('fullscreenchange', updateFullscreenIcon);
 document.addEventListener('webkitfullscreenchange', updateFullscreenIcon);
 document.addEventListener('mozfullscreenchange', updateFullscreenIcon);
 document.addEventListener('MSFullscreenChange', updateFullscreenIcon);
-
-function updateFullscreenIcon() {
-  const isFullscreen = document.fullscreenElement || 
-                       document.webkitFullscreenElement || 
-                       document.mozFullScreenElement || 
-                       document.msFullscreenElement;
-  
-  if (isFullscreen) {
-    fullscreenBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/></svg>';
-  } else {
-    fullscreenBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>';
-  }
-}
+// --- КОНЕЦ: ИСПРАВЛЕНИЯ ДЛЯ КНОПКИ FULLSCREEN --- //
 
 function updateInfo() {
   const velocity = Math.sin(angle);
