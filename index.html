@@ -4,18 +4,24 @@
 <meta charset="UTF-8">
 <title>SR Visualization</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<!-- Фиксация темной темы -->
+<!-- ЖЕСТКАЯ БЛОКИРОВКА ТЕМЫ -->
 <style>
-  :root { color-scheme: dark; }
+  :root { 
+    color-scheme: dark !important; /* Принудительно только темная тема */
+  }
+  html, body {
+    background-color: #000833 !important;
+    color: white !important;
+  }
 </style>
 <style>
   body { 
     margin:0; 
-    background:#000833; 
+    background:#000833 !important; /* !important для приоритета */
     overflow:hidden; 
     touch-action: none; 
     font-family: Arial, sans-serif;
-    color: white;
+    color: white !important;
   }
   canvas { 
     display:block;
@@ -39,38 +45,34 @@
     width: 35px;
     height: 35px;
     border-radius: 5px;
-    /* ИСПРАВЛЕНО: Темно-синий фон вместо черного */
-    background: rgba(0, 8, 51, 0.7); /* #000833 с прозрачностью */
-    border: 1px solid rgba(255,255,255,0.3);
-    color: white;
+    background: rgba(0, 8, 51, 0.7) !important; /* !important */
+    border: 1px solid rgba(255,255,255,0.3) !important;
+    color: white !important;
     font-size: 16px;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     user-select: none;
-    /* ИСПРАВЛЕНО: Убрано transform: scale из :active */
     transition: background 0.2s;
     flex-shrink: 0;
   }
   .btn:hover {
-    background: rgba(0, 20, 80, 0.8);
+    background: rgba(0, 20, 80, 0.8) !important;
   }
-  /* ИСПРАВЛЕНО: Убран эффект нажатия */
   .btn:active {
-    background: rgba(0, 30, 100, 0.9);
+    background: rgba(0, 30, 100, 0.9) !important;
   }
   .info-panel {
     position: fixed;
     top: 8px;
     left: 8px;
-    /* ИСПРАВЛЕНО: Темно-синий фон вместо черного */
-    background: rgba(0, 8, 51, 0.7); /* #000833 с прозрачностью */
-    color: white;
+    background: rgba(0, 8, 51, 0.7) !important; /* !important */
+    color: white !important;
     padding: 0 8px;
     border-radius: 5px;
     font-size: 11px;
-    border: 1px solid rgba(255,255,255,0.2);
+    border: 1px solid rgba(255,255,255,0.2) !important;
     min-width: 110px;
     max-width: 110px;
     width: 110px;
@@ -89,7 +91,7 @@
     min-width: 0;
   }
   .info-label {
-    color: #aaa;
+    color: #aaa !important;
     font-size: 9px;
     white-space: nowrap;
     flex-shrink: 0;
@@ -104,11 +106,11 @@
     flex-shrink: 1;
   }
   .speed-value {
-    color: #fa0;
+    color: #fa0 !important;
     font-size: 10px;
   }
   .gamma-value {
-    color: #0ff;
+    color: #0ff !important;
     font-size: 10px;
   }
 </style>
@@ -131,7 +133,6 @@
 <div class="controls">
   <button class="btn" id="modeBtn" title="Toggle Diagram">M</button>
   <button class="btn" id="zoomReset" title="Reset scale">↻</button>
-  <!-- Кнопка FS теперь всегда видна -->
   <button class="btn" id="fullscreen" title="Fullscreen mode">FS</button>
 </div>
 
@@ -174,9 +175,8 @@ let touchStartOffsetY = 0;
 let touchStartWorldX = 0;
 let touchStartWorldY = 0;
 
-// === ИСПРАВЛЕНИЕ: ЕДИНАЯ ФУНКЦИЯ ДЛЯ ПРОВЕРКИ FULLSCREEN API ===
+// Функции Fullscreen API
 function isFullscreenSupported() {
-  // Проверяем все возможные варианты API
   return !!(document.documentElement.requestFullscreen ||
             document.documentElement.webkitRequestFullscreen ||
             document.documentElement.mozRequestFullScreen ||
@@ -215,9 +215,8 @@ function exitFullscreen() {
   }
   return Promise.reject(new Error('Fullscreen API not supported'));
 }
-// === КОНЕЦ ИСПРАВЛЕНИЯ ===
 
-// Функции управления (ваш оригинальный код)...
+// Функции управления
 function getTouchDistance(touches) {
   const dx = touches[0].clientX - touches[1].clientX;
   const dy = touches[0].clientY - touches[1].clientY;
@@ -334,23 +333,18 @@ document.getElementById('modeBtn').addEventListener('click', () => {
   document.getElementById('modeBtn').textContent = showMinkowski ? 'E' : 'M';
 });
 
-// Функция для подгонки масштаба, чтобы диаграмма помещалась на экране
+// Функция для подгонки масштаба
 function fitToScreen() {
   const extent = lineSpacing * 10;
   const diagramSize = extent * 2;
-  
   const canvasWidth = canvas.width;
   const canvasHeight = canvas.height;
-  
   const padding = 40;
   const availableWidth = canvasWidth - padding * 2;
   const availableHeight = canvasHeight - padding * 2;
-  
   const scaleX = availableWidth / diagramSize;
   const scaleY = availableHeight / diagramSize;
-  
   scale = Math.min(scaleX, scaleY);
-  
   offsetX = canvasWidth / 2;
   offsetY = canvasHeight / 2;
 }
@@ -359,54 +353,72 @@ document.getElementById('zoomReset').addEventListener('click', () => {
   fitToScreen();
 });
 
-// === ИСПРАВЛЕННАЯ КНОПКА FULLSCREEN ===
+// === КНОПКА FULLSCREEN ===
 const fullscreenBtn = document.getElementById('fullscreen');
 
-// Проверяем поддержку Fullscreen API
 if (isFullscreenSupported()) {
-  // Показываем кнопку (она уже видна по умолчанию)
   fullscreenBtn.style.display = 'flex';
   
-  // Функция для обновления состояния кнопки
   function updateFullscreenButton() {
     const isFullscreen = !!getFullscreenElement();
-    fullscreenBtn.textContent = isFullscreen ? 'FS' : 'FS'; // Можно изменить на разные символы
+    fullscreenBtn.textContent = isFullscreen ? 'FS' : 'FS';
     fullscreenBtn.title = isFullscreen ? 'Exit fullscreen' : 'Fullscreen mode';
   }
   
-  // Обработчик клика
   fullscreenBtn.addEventListener('click', () => {
     const isFullscreen = !!getFullscreenElement();
-    
     if (!isFullscreen) {
-      // Вход в полноэкранный режим
       requestFullscreen(document.documentElement).catch(err => {
         console.log('Fullscreen error:', err);
-        // Можно показать сообщение пользователю
         fullscreenBtn.textContent = 'ERR';
         setTimeout(() => updateFullscreenButton(), 1000);
       });
     } else {
-      // Выход из полноэкранного режима
       exitFullscreen().catch(err => {
         console.log('Exit fullscreen error:', err);
       });
     }
   });
   
-  // Слушаем изменения состояния полноэкранного режима
-  document.addEventListener('fullscreenchange', updateFullscreenButton);
-  document.addEventListener('webkitfullscreenchange', updateFullscreenButton);
-  document.addEventListener('mozfullscreenchange', updateFullscreenButton);
-  document.addEventListener('MSFullscreenChange', updateFullscreenButton);
+  // ФОРСИРОВАНИЕ ТЕМЫ ПРИ ПЕРЕХОДЕ В ПОЛНОЭКРАННЫЙ РЕЖИМ
+  function forceDarkTheme() {
+    document.body.style.backgroundColor = '#000833';
+    document.body.style.color = 'white';
+    document.querySelectorAll('.btn').forEach(btn => {
+      btn.style.backgroundColor = 'rgba(0, 8, 51, 0.7)';
+      btn.style.color = 'white';
+      btn.style.borderColor = 'rgba(255,255,255,0.3)';
+    });
+    const infoPanel = document.querySelector('.info-panel');
+    if (infoPanel) {
+      infoPanel.style.backgroundColor = 'rgba(0, 8, 51, 0.7)';
+      infoPanel.style.color = 'white';
+      infoPanel.style.borderColor = 'rgba(255,255,255,0.2)';
+    }
+  }
   
-  // Инициализация кнопки
+  document.addEventListener('fullscreenchange', () => {
+    updateFullscreenButton();
+    forceDarkTheme();
+  });
+  document.addEventListener('webkitfullscreenchange', () => {
+    updateFullscreenButton();
+    forceDarkTheme();
+  });
+  document.addEventListener('mozfullscreenchange', () => {
+    updateFullscreenButton();
+    forceDarkTheme();
+  });
+  document.addEventListener('MSFullscreenChange', () => {
+    updateFullscreenButton();
+    forceDarkTheme();
+  });
+  
   updateFullscreenButton();
 } else {
-  // Если Fullscreen API не поддерживается, скрываем кнопку
   fullscreenBtn.style.display = 'none';
 }
-// === КОНЕЦ ИСПРАВЛЕНИЯ ===
+// === КОНЕЦ КНОПКИ FULLSCREEN ===
 
 function updateInfo() {
   const velocity = Math.sin(angle);
@@ -481,7 +493,7 @@ function toScreen(x, y) {
 }
 
 function getColor(darkColor, lightColor) {
-  return darkColor; // Всегда темная тема
+  return darkColor;
 }
 
 function drawLine(x1, y1, x2, y2, darkColor, lightColor, width) {
@@ -550,24 +562,19 @@ function drawOriginalDiagram() {
   const cy = 0;
   const cosA = Math.cos(angle);
   const sinA = Math.sin(angle);
-
   const extent = lineSpacing * 10;
   
   drawLine(-extent, cy, extent, cy, "#0ff", "#08f", 1);
-  
   const ctX0 = cx - sinA * extent;
   const ctY0 = cy - cosA * extent;
   const ctX1 = cx + sinA * extent;
   const ctY1 = cy + cosA * extent;
-
   const xX0 = cx - cosA * extent;
   const xY0 = cy + sinA * extent;
   const xX1 = cx + cosA * extent;
   const xY1 = cy - sinA * extent;
-
   drawLine(ctX0, ctY0, ctX1, ctY1, "#0ff", "#08f", 1);
   drawLine(xX0, xY0, xX1, xY1, "#888", "#666", 1);
-
   const ctDirX = ctX1 - ctX0;
   const ctDirY = ctY1 - ctY0;
   const ctLength = Math.sqrt(ctDirX*ctDirX + ctDirY*ctDirY);
@@ -575,7 +582,6 @@ function drawOriginalDiagram() {
   const ctUnitY = ctDirY / ctLength;
   const ctPerpX = -ctUnitY;
   const ctPerpY = ctUnitX;
-  
   const xDirX = xX1 - xX0;
   const xDirY = xY1 - xY0;
   const xLength = Math.sqrt(xDirX*xDirX + xDirY*xDirY);
@@ -586,32 +592,22 @@ function drawOriginalDiagram() {
   
   for(let sec = 1; sec <= secondsPerSide; sec++) {
     const distance = sec * lineSpacing;
-    
     const bigX1 = distance * ctUnitX;
     const bigY1 = distance * ctUnitY;
     drawMark(bigX1, bigY1, ctPerpX, ctPerpY, 14, "#0ff", "#08f", 1.5);
     if (scale > 0.5) {
-      drawText((-sec).toString(), 
-               bigX1 + ctPerpX * 15,
-               bigY1 + ctPerpY * 15, 
-               "#0ff", "#08f", 10);
+      drawText((-sec).toString(), bigX1 + ctPerpX * 15, bigY1 + ctPerpY * 15, "#0ff", "#08f", 10);
     }
-    
     const bigX2 = -distance * ctUnitX;
     const bigY2 = -distance * ctUnitY;
     drawMark(bigX2, bigY2, ctPerpX, ctPerpY, 14, "#0ff", "#08f", 1.5);
     if (scale > 0.5) {
-      drawText(sec.toString(), 
-               bigX2 - ctPerpX * 15,
-               bigY2 - ctPerpY * 15, 
-               "#0ff", "#08f", 10);
+      drawText(sec.toString(), bigX2 - ctPerpX * 15, bigY2 - ctPerpY * 15, "#0ff", "#08f", 10);
     }
-    
     const halfDistance = distance - halfSpacing;
     const halfX1 = halfDistance * ctUnitX;
     const halfY1 = halfDistance * ctUnitY;
     drawMark(halfX1, halfY1, ctPerpX, ctPerpY, 10, "#0aa", "#06a", 1.0, "dashed");
-    
     const halfX2 = -halfDistance * ctUnitX;
     const halfY2 = -halfDistance * ctUnitY;
     drawMark(halfX2, halfY2, ctPerpX, ctPerpY, 10, "#0aa", "#06a", 1.0, "dashed");
@@ -621,13 +617,10 @@ function drawOriginalDiagram() {
     const smallMarksPerSide = secondsPerSide * 10;
     for(let tenth = 1; tenth <= smallMarksPerSide; tenth++) {
       if (tenth % 5 === 0) continue;
-      
       const distance = tenth * smallSpacing;
       const smallX1 = distance * ctUnitX;
       const smallY1 = distance * ctUnitY;
-      
       drawPoint(smallX1, smallY1, 2, "#099", "#057");
-      
       const smallX2 = -distance * ctUnitX;
       const smallY2 = -distance * ctUnitY;
       drawPoint(smallX2, smallY2, 2, "#099", "#057");
@@ -638,36 +631,26 @@ function drawOriginalDiagram() {
     const t = i / 10; 
     const px = xX0 + (xX1 - xX0) * (0.5 + t/2); 
     const py = xY0 + (xY1 - xY0) * (0.5 + t/2);
-    
-    drawLine(
-      px, py - extent,
-      px, py + extent,
-      "#888", "#666",
-      1
-    );
+    drawLine(px, py - extent, px, py + extent, "#888", "#666", 1);
     
     for(let sec = 1; sec <= secondsPerSide; sec++) {
       const distance = sec * lineSpacing;
-      
       const upX = px;
       const upY = py - distance;
       drawMark(upX, upY, 1, 0, 12, "#888", "#666", 1.5);
       if (scale > 0.5) {
         drawText(sec.toString(), upX - 8, upY, "#888", "#666", 10, "right");
       }
-      
       const downX = px;
       const downY = py + distance;
       drawMark(downX, downY, 1, 0, 12, "#888", "#666", 1.5);
       if (scale > 0.5) {
         drawText((-sec).toString(), downX + 8, downY, "#888", "#666", 10, "left");
       }
-      
       const halfDistance = distance - halfSpacing;
       const halfUpX = px;
       const halfUpY = py - halfDistance;
       drawMark(halfUpX, halfUpY, 1, 0, 9, "#888", "#666", 1.0, "dashed");
-      
       const halfDownX = px;
       const halfDownY = py + halfDistance;
       drawMark(halfDownX, halfDownY, 1, 0, 9, "#888", "#666", 1.0, "dashed");
@@ -676,13 +659,10 @@ function drawOriginalDiagram() {
     if (scale > 0.7) {
       for(let tenth = 1; tenth <= secondsPerSide * 10; tenth++) {
         if (tenth % 5 === 0) continue;
-        
         const distance = tenth * smallSpacing;
         const upX = px;
         const upY = py - distance;
-        
         drawPoint(upX, upY, 1.5, "#888", "#666");
-        
         const downX = px;
         const downY = py + distance;
         drawPoint(downX, downY, 1.5, "#888", "#666");
@@ -701,16 +681,13 @@ function drawOriginalDiagram() {
   ctx.fill();
 }
 
-// === ДИАГРАММА МИНКОВСКОГО (M) - с правильным масштабом ===
+// === ДИАГРАММА МИНКОВСКОГО (M) ===
 function drawMinkowskiDiagram() {
   const extent = lineSpacing * 10;
-  
   drawLine(-extent, 0, extent, 0, "#0ff", "#08f", 0.5);
   drawLine(0, -extent, 0, extent, "#0ff", "#08f", 0.5);
-  
   drawDashedLine(-extent, -extent, extent, extent, "#ff0", "#880", 0.3, [1, 3]);
   drawDashedLine(-extent, extent, extent, -extent, "#ff0", "#880", 0.3, [1, 3]);
-  
   const gridStep = lineSpacing;
   
   for (let i = -Math.floor(extent/gridStep); i <= Math.floor(extent/gridStep); i++) {
@@ -721,10 +698,8 @@ function drawMinkowskiDiagram() {
   }
   
   const beta = Math.sin(angle);
-  
   const visBetaLimit = 0.999;
   let visBeta = beta;
-  
   const absBeta = Math.abs(beta);
   if (absBeta > 0.707) {
     const t = (absBeta - 0.707) / (0.999 - 0.707);
@@ -733,51 +708,38 @@ function drawMinkowskiDiagram() {
   }
   
   const visGamma = 1 / Math.sqrt(1 - visBeta * visBeta);
-  
   const ctPrimeX = visBeta * visGamma;
   const ctPrimeY = visGamma;
   const xPrimeX = visGamma;  
   const xPrimeY = visBeta * visGamma;
-  
   const maxGamma = 50;
   const drawGamma = Math.min(visGamma, maxGamma);
   const drawBeta = Math.sqrt(1 - 1/(drawGamma * drawGamma)) * Math.sign(visBeta);
-  
   const drawCtPrimeX = drawBeta * drawGamma;
   const drawCtPrimeY = drawGamma;
   const drawXPrimeX = drawGamma;
   const drawXPrimeY = drawBeta * drawGamma;
   
-  drawLine(-drawCtPrimeX * extent, -drawCtPrimeY * extent, 
-           drawCtPrimeX * extent, drawCtPrimeY * extent, 
-           "#888", "#666", 1.5);
-  
-  drawLine(-drawXPrimeX * extent, -drawXPrimeY * extent, 
-           drawXPrimeX * extent, drawXPrimeY * extent, 
-           "#888", "#666", 1.5);
+  drawLine(-drawCtPrimeX * extent, -drawCtPrimeY * extent, drawCtPrimeX * extent, drawCtPrimeY * extent, "#888", "#666", 1.5);
+  drawLine(-drawXPrimeX * extent, -drawXPrimeY * extent, drawXPrimeX * extent, drawXPrimeY * extent, "#888", "#666", 1.5);
   
   for (let i = -Math.floor(extent/gridStep); i <= Math.floor(extent/gridStep); i++) {
     const offset = i * gridStep;
-    
     const x1 = -drawXPrimeX * extent + drawCtPrimeX * offset;
     const y1 = -drawXPrimeY * extent + drawCtPrimeY * offset;
     const x2 = drawXPrimeX * extent + drawCtPrimeX * offset;
     const y2 = drawXPrimeY * extent + drawCtPrimeY * offset;
-    
     const p1 = toScreen(x1, y1);
     const p2 = toScreen(x2, y2);
     ctx.strokeStyle = "#888";
     ctx.lineWidth = 0.7;
-    
     const slope = Math.abs((y2 - y1) / (x2 - x1));
     const angleDiff = Math.abs(Math.atan(slope) - Math.PI/4);
-    
     if (angleDiff < 0.05 && Math.abs(visBeta) > 0.7) {
       ctx.setLineDash([2, 4]);
     } else {
       ctx.setLineDash([4, 4]);
     }
-    
     ctx.beginPath();
     ctx.moveTo(p1.x, p1.y);
     ctx.lineTo(p2.x, p2.y);
@@ -788,21 +750,17 @@ function drawMinkowskiDiagram() {
     const y3 = -drawCtPrimeY * extent + drawXPrimeY * offset;
     const x4 = drawCtPrimeX * extent + drawXPrimeX * offset;
     const y4 = drawCtPrimeY * extent + drawXPrimeY * offset;
-    
     const p3 = toScreen(x3, y3);
     const p4 = toScreen(x4, y4);
     ctx.strokeStyle = "#888";
     ctx.lineWidth = 0.7;
-    
     const slope2 = Math.abs((y4 - y3) / (x4 - x3));
     const angleDiff2 = Math.abs(Math.atan(slope2) - Math.PI/4);
-    
     if (angleDiff2 < 0.05 && Math.abs(visBeta) > 0.7) {
       ctx.setLineDash([2, 4]);
     } else {
       ctx.setLineDash([4, 4]);
     }
-    
     ctx.beginPath();
     ctx.moveTo(p3.x, p3.y);
     ctx.lineTo(p4.x, p4.y);
