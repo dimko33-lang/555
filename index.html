@@ -152,11 +152,18 @@
 </div>
 
 <script>
+// Примитивный отладчик: покажет любую ошибку JS
+window.onerror = function (message, source, lineno, colno, error) {
+  alert('JS error: ' + message + '\n' +
+        'at ' + lineno + ':' + colno);
+};
+
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d");
 
 // Параметры визуализации
 let angle = 0;
+...
 let dragging = false;
 let lastX = 0;
 let scale = 0.3;
