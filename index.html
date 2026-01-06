@@ -2,9 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>SR Visualization</title>
+<title>SR / Penrose / AdS-CFT Visualization</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<!-- ЖЕСТКАЯ БЛОКИРОВКА ТЕМЫ -->
 <style>
   :root { 
     color-scheme: dark !important;
@@ -38,17 +37,17 @@
     gap: 4px;
     flex-wrap: nowrap;
     justify-content: flex-end;
-    max-width: 150px;
+    max-width: 220px;
     z-index: 100;
   }
   .btn {
-    width: 35px;
+    min-width: 35px;
     height: 35px;
     border-radius: 5px;
     background: rgba(0, 8, 51, 0.7) !important;
     border: 1px solid rgba(255,255,255,0.3) !important;
     color: white !important;
-    font-size: 16px;
+    font-size: 14px;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -56,6 +55,7 @@
     user-select: none;
     transition: background 0.2s;
     flex-shrink: 0;
+    padding: 0 6px;
   }
   .btn:hover {
     background: rgba(0, 20, 80, 0.8) !important;
@@ -74,9 +74,9 @@
     font-size: 11px;
     border: 1px solid rgba(255,255,255,0.2) !important;
     min-width: 110px;
-    max-width: 110px;
-    width: 110px;
-    height: 35px;
+    max-width: 130px;
+    width: 130px;
+    height: 40px;
     z-index: 1000;
     display: flex;
     flex-direction: column;
@@ -147,8 +147,13 @@ let lastX = 0;
 let scale = 0.3;
 let offsetX = 0, offsetY = 0;
 
-// РЕЖИМЫ: E (евклид), M (Минковский), P (Penrose), D (диск Пуанкаре)
-const modes = ['E', 'M', 'P', 'D'];
+// РЕЖИМЫ:
+// E — евклидовый «наклон осей»
+// M — Минковский
+// P — Пенроуз (Minkowski 1+1)
+// D — диск Пуанкаре (гиперболика / скорости)
+// A — AdS/CFT (плоскость Пуанкаре, полу-пространство)
+const modes = ['E', 'M', 'P', 'D', 'A'];
 let modeIndex = 0;
 let mode = modes[modeIndex];
 
@@ -162,12 +167,12 @@ const TARGET_GAMMA = 1000000.000;
 const TARGET_V = Math.sqrt(1 - 1/(TARGET_GAMMA * TARGET_GAMMA));
 const MAX_ANGLE = Math.asin(TARGET_V);
 
-// РАСЧЕТ РАССТОЯНИЙ
+// РАССТОЯНИЯ
 const lineSpacing = vertLineLength / (numLines - 1);
 const halfSpacing = lineSpacing / 2;
 const smallSpacing = lineSpacing / 10;
 
-// МУЛЬТИТАЧ ПЕРЕМЕННЫЕ
+// МУЛЬТИТАЧ
 let touchStartDistance = null;
 let touchStartAngle = null;
 let touchStartCenterX = 0;
@@ -186,37 +191,24 @@ function isFullscreenSupported() {
             document.documentElement.mozRequestFullScreen ||
             document.documentElement.msRequestFullscreen);
 }
-
 function getFullscreenElement() {
   return document.fullscreenElement ||
          document.webkitFullscreenElement ||
          document.mozFullScreenElement ||
          document.msFullscreenElement;
 }
-
 function requestFullscreen(element) {
-  if (element.requestFullscreen) {
-    return element.requestFullscreen();
-  } else if (element.webkitRequestFullscreen) {
-    return element.webkitRequestFullscreen();
-  } else if (element.mozRequestFullScreen) {
-    return element.mozRequestFullScreen();
-  } else if (element.msRequestFullscreen) {
-    return element.msRequestFullscreen();
-  }
+  if (element.requestFullscreen) return element.requestFullscreen();
+  if (element.webkitRequestFullscreen) return element.webkitRequestFullscreen();
+  if (element.mozRequestFullScreen) return element.mozRequestFullScreen();
+  if (element.msRequestFullscreen) return element.msRequestFullscreen();
   return Promise.reject(new Error('Fullscreen API not supported'));
 }
-
 function exitFullscreen() {
-  if (document.exitFullscreen) {
-    return document.exitFullscreen();
-  } else if (document.webkitExitFullscreen) {
-    return document.webkitExitFullscreen();
-  } else if (document.mozCancelFullScreen) {
-    return document.mozCancelFullScreen();
-  } else if (document.msExitFullscreen) {
-    return document.msExitFullscreen();
-  }
+  if (document.exitFullscreen) return document.exitFullscreen();
+  if (document.webkitExitFullscreen) return document.webkitExitFullscreen();
+  if (document.mozCancelFullScreen) return document.mozCancelFullScreen();
+  if (document.msExitFullscreen) return document.msExitFullscreen();
   return Promise.reject(new Error('Fullscreen API not supported'));
 }
 
@@ -226,7 +218,6 @@ function getTouchDistance(touches) {
   const dy = touches[0].clientY - touches[1].clientY;
   return Math.sqrt(dx * dx + dy * dy);
 }
-
 function getTouchAngle(touches) {
   const dx = touches[0].clientX - touches[1].clientX;
   const dy = touches[0].clientY - touches[1].clientY;
@@ -242,7 +233,6 @@ canvas.addEventListener('touchstart', (e) => {
     touchStartDistance = getTouchDistance(e.touches);
     touchStartAngle = getTouchAngle(e.touches);
     touchStartCenterX = (touch1.clientX + touch2.clientX) / 2 - rect.left;
-    touchStartCenterY = (touch1.clientX + touch2.clientY) / 2 - rect.top;
     touchStartCenterY = (touch1.clientY + touch2.clientY) / 2 - rect.top;
     touchStartScale = scale;
     touchStartAngleSystem = angle;
@@ -346,16 +336,13 @@ document.getElementById('zoomReset').addEventListener('click', () => {
 
 // FULLSCREEN
 const fullscreenBtn = document.getElementById('fullscreen');
-
 if (isFullscreenSupported()) {
   fullscreenBtn.style.display = 'flex';
-  
   function updateFullscreenButton() {
     const isFullscreen = !!getFullscreenElement();
     fullscreenBtn.textContent = 'FS';
     fullscreenBtn.title = isFullscreen ? 'Exit fullscreen' : 'Fullscreen mode';
   }
-  
   fullscreenBtn.addEventListener('click', () => {
     const isFullscreen = !!getFullscreenElement();
     if (!isFullscreen) {
@@ -370,7 +357,6 @@ if (isFullscreenSupported()) {
       });
     }
   });
-  
   function forceDarkTheme() {
     document.body.style.backgroundColor = '#000833';
     document.body.style.color = 'white';
@@ -386,7 +372,6 @@ if (isFullscreenSupported()) {
       infoPanel.style.borderColor = 'rgba(255,255,255,0.2)';
     }
   }
-  
   document.addEventListener('fullscreenchange', () => {
     updateFullscreenButton();
     forceDarkTheme();
@@ -403,12 +388,12 @@ if (isFullscreenSupported()) {
     updateFullscreenButton();
     forceDarkTheme();
   });
-  
   updateFullscreenButton();
 } else {
   fullscreenBtn.style.display = 'none';
 }
 
+// Инфо о скорости / γ
 function updateInfo() {
   const velocity = Math.sin(angle);
   let velocityStr;
@@ -479,7 +464,6 @@ function fitToScreen() {
   offsetX = canvasWidth / 2;
   offsetY = canvasHeight / 2;
 }
-
 function resize() {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
@@ -488,18 +472,16 @@ function resize() {
 window.addEventListener("resize", resize);
 resize();
 
-// === ОБЩИЕ ФУНКЦИИ РЕНДЕРА ===
+// === ОБЩИЙ РЕНДЕР ===
 function toScreen(x, y) {
   return {
     x: x * scale + offsetX,
     y: y * scale + offsetY
   };
 }
-
 function getColor(darkColor, lightColor) {
   return darkColor;
 }
-
 function drawLine(x1, y1, x2, y2, darkColor, lightColor, width) {
   const p1 = toScreen(x1, y1);
   const p2 = toScreen(x2, y2);
@@ -511,7 +493,6 @@ function drawLine(x1, y1, x2, y2, darkColor, lightColor, width) {
   ctx.lineTo(p2.x, p2.y);
   ctx.stroke();
 }
-
 function drawDashedLine(x1, y1, x2, y2, darkColor, lightColor, width, dashPattern = [5, 5]) {
   const p1 = toScreen(x1, y1);
   const p2 = toScreen(x2, y2);
@@ -524,7 +505,6 @@ function drawDashedLine(x1, y1, x2, y2, darkColor, lightColor, width, dashPatter
   ctx.stroke();
   ctx.setLineDash([]);
 }
-
 function drawCurve(points, color, width, dashPattern = null) {
   if (!points.length) return;
   ctx.strokeStyle = color;
@@ -540,7 +520,6 @@ function drawCurve(points, color, width, dashPattern = null) {
   ctx.stroke();
   ctx.setLineDash([]);
 }
-
 function drawMark(px, py, dirX, dirY, length, darkColor, lightColor, width, style = "solid") {
   const p = toScreen(px, py);
   const d = toScreen(px + dirX * length/2, py + dirY * length/2);
@@ -558,7 +537,6 @@ function drawMark(px, py, dirX, dirY, length, darkColor, lightColor, width, styl
   ctx.stroke();
   ctx.setLineDash([]);
 }
-
 function drawPoint(px, py, radius, darkColor, lightColor) {
   const p = toScreen(px, py);
   ctx.fillStyle = getColor(darkColor, lightColor);
@@ -566,9 +544,8 @@ function drawPoint(px, py, radius, darkColor, lightColor) {
   ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
   ctx.fill();
 }
-
 function drawText(text, px, py, darkColor, lightColor, fontSize = 10, align = "center") {
-  if (scale < 0.3) return;
+  if (scale < 0.25) return;
   const p = toScreen(px, py);
   ctx.font = `${fontSize}px Arial`;
   ctx.fillStyle = getColor(darkColor, lightColor);
@@ -577,7 +554,7 @@ function drawText(text, px, py, darkColor, lightColor, fontSize = 10, align = "c
   ctx.fillText(text, p.x, p.y);
 }
 
-// === ЕВКЛИДОВАЯ "ОРИГИНАЛЬНАЯ" ДИАГРАММА (E) ===
+// === ЕВКЛИДОВАЯ (E) ===
 function drawOriginalDiagram() {
   const cx = 0;
   const cy = 0;
@@ -695,27 +672,23 @@ function drawOriginalDiagram() {
     }
   }
 
-  const center = toScreen(0, 0);
-  ctx.fillStyle = "#fff";
-  ctx.beginPath();
-  ctx.arc(center.x, center.y, 2, 0, Math.PI * 2);
-  ctx.fill();
+  drawPoint(0, 0, 2, "#fff", "#fff");
 }
 
 // === МИНКОВСКИЙ (M) ===
 function drawMinkowskiDiagram() {
   const extent = lineSpacing * 10;
-  drawLine(-extent, 0, extent, 0, "#0ff", "#08f", 0.5);
-  drawLine(0, -extent, 0, extent, "#0ff", "#08f", 0.5);
-  drawDashedLine(-extent, -extent, extent, extent, "#ff0", "#880", 0.3, [1, 3]);
-  drawDashedLine(-extent, extent, extent, -extent, "#ff0", "#880", 0.3, [1, 3]);
+  drawLine(-extent, 0, extent, 0, "#0ff", "#08f", 0.8);
+  drawLine(0, -extent, 0, extent, "#0ff", "#08f", 0.8);
+  drawDashedLine(-extent, -extent, extent, extent, "#ff0", "#880", 0.6, [4, 4]);
+  drawDashedLine(-extent, extent, extent, -extent, "#ff0", "#880", 0.6, [4, 4]);
   const gridStep = lineSpacing;
   
   for (let i = -Math.floor(extent/gridStep); i <= Math.floor(extent/gridStep); i++) {
     if (i === 0) continue;
     const x = i * gridStep;
-    drawDashedLine(x, -extent, x, extent, "#0aa", "#06a", 0.4, [3, 3]);
-    drawDashedLine(-extent, x, extent, x, "#0aa", "#06a", 0.4, [3, 3]);
+    drawDashedLine(x, -extent, x, extent, "#044", "#06a", 0.4, [3, 5]);
+    drawDashedLine(-extent, x, extent, x, "#044", "#06a", 0.4, [3, 5]);
   }
   
   const beta = Math.sin(angle);
@@ -729,10 +702,6 @@ function drawMinkowskiDiagram() {
   }
   
   const visGamma = 1 / Math.sqrt(1 - visBeta * visBeta);
-  const ctPrimeX = visBeta * visGamma;
-  const ctPrimeY = visGamma;
-  const xPrimeX = visGamma;  
-  const xPrimeY = visBeta * visGamma;
   const maxGamma = 50;
   const drawGamma = Math.min(visGamma, maxGamma);
   const drawBeta = Math.sqrt(1 - 1/(drawGamma * drawGamma)) * Math.sign(visBeta);
@@ -789,14 +758,10 @@ function drawMinkowskiDiagram() {
     ctx.setLineDash([]);
   }
   
-  const center = toScreen(0, 0);
-  ctx.fillStyle = "#fff";
-  ctx.beginPath();
-  ctx.arc(center.x, center.y, 2, 0, Math.PI * 2);
-  ctx.fill();
+  drawPoint(0, 0, 2, "#fff", "#fff");
 }
 
-// === PENROSE (P): конформная компактификация Минковского 1+1 ===
+// === PENROSE (P) — Minkowski 1+1 ===
 function minkowskiToPenroseProjected(t, x, extent) {
   const u = t - x;
   const v = t + x;
@@ -804,29 +769,30 @@ function minkowskiToPenroseProjected(t, x, extent) {
   const V = Math.atan(v);
   const T = (U + V) / 2;
   const X = (V - U) / 2;
-  const s = extent / (Math.PI / 2); // чтобы ромб занимал тот же масштаб
+  const s = extent / (Math.PI / 2);
   return { X: X * s, T: T * s };
 }
-
 function drawPenroseDiagram() {
-  const extent = lineSpacing * 10;
-  const L = extent * 0.99;
+  const extent = lineSpacing * 8;
+  const L = extent * 0.95;
 
-  // Оси T и X
-  drawLine(-L, 0, L, 0, "#0ff", "#08f", 0.5);
-  drawLine(0, -L, 0, L, "#0ff", "#08f", 0.5);
-
-  // Ромб (границы бесконечности)
+  // Ромб-глобус Минковского
   drawLine(0, -L, L, 0, "#ff0", "#880", 1);
   drawLine(L, 0, 0, L, "#ff0", "#880", 1);
   drawLine(0, L, -L, 0, "#ff0", "#880", 1);
   drawLine(-L, 0, 0, -L, "#ff0", "#880", 1);
 
+  // Оси T,X
+  drawLine(-L, 0, L, 0, "#0ff", "#08f", 0.8);
+  drawLine(0, -L, 0, L, "#0ff", "#08f", 0.8);
+  drawText("T", 0, L * 1.05, "#0ff", "#0ff", 11);
+  drawText("X", L * 1.05, 0, "#0ff", "#0ff", 11);
+
   const gridStep = lineSpacing;
-  const maxT = extent;
+  const maxT = lineSpacing * 10;
   const samples = 80;
 
-  // Линии t = const
+  // Сетка t = const (горизонтальные в Минковском → кривые в ромбе)
   for (let ti = -Math.floor(maxT/gridStep); ti <= Math.floor(maxT/gridStep); ti++) {
     const t0 = ti * gridStep;
     if (Math.abs(t0) < 1e-6) continue;
@@ -836,35 +802,75 @@ function drawPenroseDiagram() {
       const { X, T } = minkowskiToPenroseProjected(t0, x, extent);
       pts.push({ x: X, y: T });
     }
-    drawCurve(pts, "#0aa", 0.6, [3,3]);
+    drawCurve(pts, "#044", 0.7, [3,4]);
   }
 
-  // Линии x = const
+  // Сетка x = const
   for (let xi = -Math.floor(maxT/gridStep); xi <= Math.floor(maxT/gridStep); xi++) {
     const x0 = xi * gridStep;
+    if (Math.abs(x0) < 1e-6) continue;
     const pts = [];
     for (let k = 0; k <= samples; k++) {
       const t = -maxT + 2*maxT * (k / samples);
       const { X, T } = minkowskiToPenroseProjected(t, x0, extent);
       pts.push({ x: X, y: T });
     }
-    drawCurve(pts, "#0aa", 0.6, [3,3]);
+    drawCurve(pts, "#044", 0.7, [3,4]);
   }
 
-  // Центр
-  const center = toScreen(0, 0);
-  ctx.fillStyle = "#fff";
-  ctx.beginPath();
-  ctx.arc(center.x, center.y, 2, 0, Math.PI * 2);
-  ctx.fill();
+  // Примеры мировых линий
+  // Тимоподобная (наблюдатель в x=0)
+  {
+    const pts = [];
+    for (let k = 0; k <= samples; k++) {
+      const t = -maxT + 2*maxT * (k / samples);
+      const { X, T } = minkowskiToPenroseProjected(t, 0, extent);
+      pts.push({ x: X, y: T });
+    }
+    drawCurve(pts, "#0f0", 1.2);
+  }
+  // Нулевая: t=x (идет по правому свет.конусу)
+  {
+    const pts = [];
+    for (let k = 0; k <= samples; k++) {
+      const s = -maxT + 2*maxT * (k / samples);
+      const t = s;
+      const x = s;
+      const { X, T } = minkowskiToPenroseProjected(t, x, extent);
+      pts.push({ x: X, y: T });
+    }
+    drawCurve(pts, "#ff0", 1.2);
+  }
+  // Пространствоподобная: t=0 (простая линия «сейчас»)
+  {
+    const pts = [];
+    const t = 0;
+    for (let k = 0; k <= samples; k++) {
+      const x = -maxT + 2*maxT * (k / samples);
+      const { X, T } = minkowskiToPenroseProjected(t, x, extent);
+      pts.push({ x: X, y: T });
+    }
+    drawCurve(pts, "#0af", 1.0, [6,3]);
+  }
+
+  // Обозначения бесконечностей
+  drawText("𝓘⁺",  L*0.85,  L*0.55, "#fff", "#fff", 11);
+  drawText("𝓘⁺", -L*0.85,  L*0.55, "#fff", "#fff", 11);
+  drawText("𝓘⁻",  L*0.85, -L*0.55, "#fff", "#fff", 11);
+  drawText("𝓘⁻", -L*0.85, -L*0.55, "#fff", "#fff", 11);
+  drawText("i⁺",   0,  L*0.95, "#fff", "#fff", 11);
+  drawText("i⁻",   0, -L*0.95, "#fff", "#fff", 11);
+  drawText("i⁰",   L*0.9, 0, "#fff", "#fff", 11);
+
+  drawPoint(0, 0, 2, "#fff", "#fff");
 }
 
-// === ДИСК ПУАНКАРЕ (D) — гиперболика / пространство скоростей ===
+// === ДИСК ПУАНКАРЕ (D) — H², пространство скоростей ===
 function drawPoincareDisk() {
   const extent = lineSpacing * 8;
   const R = extent * 0.9;
 
-  // Окружность диска
+  // Окружность диска (граница)
   const c = toScreen(0, 0);
   ctx.strokeStyle = "#0ff";
   ctx.lineWidth = 1.5;
@@ -873,7 +879,7 @@ function drawPoincareDisk() {
   ctx.arc(c.x, c.y, R * scale, 0, 2*Math.PI);
   ctx.stroke();
 
-  // Диаметры (геодезические)
+  // Диаметры (геодезики)
   const nDiam = 8;
   for (let i = 0; i < nDiam; i++) {
     const phi = i * Math.PI / nDiam;
@@ -882,7 +888,7 @@ function drawPoincareDisk() {
     drawLine(-x, -y, x, y, "#044", "#0aa", 0.7);
   }
 
-  // Концентрические окружности (линии одинакового гиперболического расстояния от центра — в евклид. смысле просто круги)
+  // Концентрические окружности
   const nCircles = 4;
   for (let i = 1; i <= nCircles; i++) {
     const r = R * i / (nCircles + 1);
@@ -895,11 +901,30 @@ function drawPoincareDisk() {
     ctx.setLineDash([]);
   }
 
-  // Текущая скорость как точка в диске (пространство скоростей)
+  // Пара «гиперболических» геодезик (окружности, ортогональные границе)
+  function drawGeodesicCircle(x0, y0, rad) {
+    const points = [];
+    const N = 80;
+    for (let i = 0; i <= N; i++) {
+      const th = Math.PI * i / N;
+      const x = x0 + rad * Math.cos(th);
+      const y = y0 + rad * Math.sin(th);
+      const r = Math.sqrt(x*x + y*y);
+      if (r <= R*1.001) {
+        points.push({ x, y });
+      }
+    }
+    drawCurve(points, "#0f0", 1.0);
+  }
+  // Примеры двух геодезик
+  drawGeodesicCircle(0, -R*0.5, R*0.5);
+  drawGeodesicCircle(0, -R*0.7, R*0.7);
+
+  // Скорость как точка в диске (пространство скоростей)
   const beta = Math.sin(angle);
   const absBeta = Math.abs(beta);
   if (absBeta > 0) {
-    // η = artanh(v), r_hyper = tanh(η/2)
+    // η = artanh(v), rHyper = tanh(η/2)
     const eta = 0.5 * Math.log((1 + absBeta) / (1 - absBeta)); // artanh(|v|)
     const rHyper = Math.tanh(eta / 2);
     const rWorld = rHyper * R;
@@ -909,11 +934,76 @@ function drawPoincareDisk() {
     drawPoint(x, y, 3, "#f80", "#f44");
   }
 
-  // Центр
   drawPoint(0, 0, 2, "#fff", "#fff");
+  drawText("Poincaré disk (H² / velocities)", 0, -R*1.2, "#0ff", "#0ff", 11);
 }
 
-// === ГЛАВНЫЙ ЦИКЛ ОТРИСОВКИ ===
+// === AdS/CFT (A) — Poincaré-полу-пространство ===
+function drawAdSDiagram() {
+  const extent = lineSpacing * 8;
+  const Lx = extent * 1.2;
+  const Lz = extent * 0.9;
+
+  // Граница CFT при z=0
+  drawLine(-Lx, 0, Lx, 0, "#0ff", "#0ff", 1.2);
+  drawText("CFT boundary (z = 0)", 0, -Lz*0.15, "#0ff", "#0ff", 11);
+
+  // «Глубина» AdS (z > 0)
+  const Nz = 7;
+  const Nx = 8;
+  for (let iz = 1; iz <= Nz; iz++) {
+    // Располагаем линии z по геометрической прогрессии, чтобы уплотнялись к границе
+    const s = iz / (Nz + 1);
+    const z = Lz * Math.pow(s, 1.2);
+    // горизонтальные линии z = const
+    drawDashedLine(-Lx, z, Lx, z, "#044", "#066", 0.6, [4,4]);
+  }
+  for (let ix = -Nx; ix <= Nx; ix++) {
+    const x = Lx * ix / Nx;
+    drawDashedLine(x, 0, x, Lz, "#033", "#055", 0.5, [3,5]);
+  }
+
+  // Пара точек оператора на границе
+  const xA = -Lx * 0.6;
+  const xB =  Lx * 0.6;
+  drawPoint(xA, 0, 3, "#ff0", "#ff0");
+  drawPoint(xB, 0, 3, "#ff0", "#ff0");
+  drawText("O₁", xA, -Lz*0.06, "#ff0", "#ff0", 11);
+  drawText("O₂", xB, -Lz*0.06, "#ff0", "#ff0", 11);
+
+  // Геодезики в AdS, соединяющие точки на границе — типичный AdS/CFT рисунок
+  function drawSemiCircle(xc, zc, R) {
+    const pts = [];
+    const N = 80;
+    for (let i = 0; i <= N; i++) {
+      const th = Math.PI * i / N;
+      const x = xc + R * Math.cos(th);
+      const z = zc + R * Math.sin(th);
+      if (z >= 0 && z <= Lz*1.02) pts.push({ x, y: z });
+    }
+    drawCurve(pts, "#0f0", 1.5);
+  }
+  // Круг с центром под «землёй» (zc < 0), ортогональный границе
+  const xc1 = 0;
+  const R1  = Lx * 0.6;
+  const zc1 = -0.0001; // почти на границе
+  drawSemiCircle(xc1, zc1, R1);
+
+  const xc2 = 0;
+  const R2  = Lx * 0.35;
+  const zc2 = -0.0001;
+  drawSemiCircle(xc2, zc2, R2);
+
+  // Подписи зон
+  drawText("AdS bulk (Poincaré patch)", 0, Lz*0.55, "#0ff", "#0ff", 11);
+  drawText("z", -Lx*0.9, Lz*0.9, "#0ff", "#0ff", 11, "left");
+  drawText("x", Lx*0.95, Lz*0.9, "#0ff", "#0ff", 11, "right");
+
+  // Условная стрелка времени наверху (t идёт «вперёд из плоскости»)
+  drawText("t → (out of plane)", 0, -Lz*0.35, "#0aa", "#0aa", 10);
+}
+
+// === ГЛАВНЫЙ ЦИКЛ ===
 function animate() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   
@@ -925,12 +1015,13 @@ function animate() {
     drawPenroseDiagram();
   } else if (mode === 'D') {
     drawPoincareDisk();
+  } else if (mode === 'A') {
+    drawAdSDiagram();
   }
   
   requestAnimationFrame(animate);
 }
 
-// Запуск
 updateInfo();
 animate();
 </script>
