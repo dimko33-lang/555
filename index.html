@@ -36,9 +36,15 @@
     display: flex;
     gap: 4px;
     flex-wrap: nowrap;
+    align-items: center;
     justify-content: flex-end;
-    max-width: 220px;
+    max-width: 100%;
     z-index: 100;
+  }
+  .mode-buttons {
+    display: flex;
+    gap: 4px;
+    flex-wrap: nowrap;
   }
   .btn {
     min-width: 35px;
@@ -53,7 +59,7 @@
     align-items: center;
     justify-content: center;
     user-select: none;
-    transition: background 0.2s;
+    transition: background 0.2s, box-shadow 0.2s, border-color 0.2s;
     flex-shrink: 0;
     padding: 0 6px;
   }
@@ -62,6 +68,10 @@
   }
   .btn:active {
     background: rgba(0, 30, 100, 0.9) !important;
+  }
+  .btn.active {
+    border-color: #0ff !important;
+    box-shadow: 0 0 6px rgba(0,255,255,0.7);
   }
   .info-panel {
     position: fixed;
@@ -73,8 +83,7 @@
     border-radius: 5px;
     font-size: 11px;
     border: 1px solid rgba(255,255,255,0.2) !important;
-    min-width: 110px;
-    max-width: 130px;
+    min-width: 130px;
     width: 130px;
     height: 40px;
     z-index: 1000;
@@ -131,7 +140,13 @@
 </div>
 
 <div class="controls">
-  <button class="btn" id="modeBtn" title="Toggle Diagram">E</button>
+  <div class="mode-buttons">
+    <button class="btn mode-btn" data-mode="E" title="Euclidean diagram">E</button>
+    <button class="btn mode-btn" data-mode="M" title="Minkowski diagram">M</button>
+    <button class="btn mode-btn" data-mode="P" title="Penrose diagram">P</button>
+    <button class="btn mode-btn" data-mode="D" title="Poincaré disk">D</button>
+    <button class="btn mode-btn" data-mode="A" title="AdS/CFT patch">A</button>
+  </div>
   <button class="btn" id="zoomReset" title="Reset scale">↻</button>
   <button class="btn" id="fullscreen" title="Fullscreen mode">FS</button>
 </div>
@@ -147,15 +162,9 @@ let lastX = 0;
 let scale = 0.3;
 let offsetX = 0, offsetY = 0;
 
-// РЕЖИМЫ:
-// E — евклидовый «наклон осей»
-// M — Минковский
-// P — Пенроуз (Minkowski 1+1)
-// D — диск Пуанкаре (гиперболика / скорости)
-// A — AdS/CFT (плоскость Пуанкаре, полу-пространство)
+// РЕЖИМЫ: E, M, P, D, A
 const modes = ['E', 'M', 'P', 'D', 'A'];
-let modeIndex = 0;
-let mode = modes[modeIndex];
+let mode = 'E';
 
 // ПАРАМЕТРЫ ДИАГРАММЫ
 const numLines = 21;
@@ -320,14 +329,20 @@ canvas.addEventListener("wheel", e => {
   offsetY = mouseY - worldY * scale;
 });
 
-// Кнопка режимов
-const modeBtn = document.getElementById('modeBtn');
-modeBtn.textContent = mode;
-modeBtn.addEventListener('click', () => {
-  modeIndex = (modeIndex + 1) % modes.length;
-  mode = modes[modeIndex];
-  modeBtn.textContent = mode;
+// Кнопки режимов
+const modeButtons = document.querySelectorAll('.mode-btn');
+function setMode(newMode) {
+  mode = newMode;
+  modeButtons.forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.mode === mode);
+  });
+}
+modeButtons.forEach(btn => {
+  btn.addEventListener('click', () => {
+    setMode(btn.dataset.mode);
+  });
 });
+setMode('E');
 
 // reset scale
 document.getElementById('zoomReset').addEventListener('click', () => {
@@ -769,7 +784,7 @@ function minkowskiToPenroseProjected(t, x, extent) {
   const V = Math.atan(v);
   const T = (U + V) / 2;
   const X = (V - U) / 2;
-  const s = extent / (Math.PI / 2);
+  const s = extent / (Math.PI / 2); // масштаб, чтобы ромб был конечным
   return { X: X * s, T: T * s };
 }
 function drawPenroseDiagram() {
@@ -792,7 +807,7 @@ function drawPenroseDiagram() {
   const maxT = lineSpacing * 10;
   const samples = 80;
 
-  // Сетка t = const (горизонтальные в Минковском → кривые в ромбе)
+  // Сетка t = const
   for (let ti = -Math.floor(maxT/gridStep); ti <= Math.floor(maxT/gridStep); ti++) {
     const t0 = ti * gridStep;
     if (Math.abs(t0) < 1e-6) continue;
@@ -818,8 +833,7 @@ function drawPenroseDiagram() {
     drawCurve(pts, "#044", 0.7, [3,4]);
   }
 
-  // Примеры мировых линий
-  // Тимоподобная (наблюдатель в x=0)
+  // Тимоподобная мировая линия x=0
   {
     const pts = [];
     for (let k = 0; k <= samples; k++) {
@@ -829,7 +843,7 @@ function drawPenroseDiagram() {
     }
     drawCurve(pts, "#0f0", 1.2);
   }
-  // Нулевая: t=x (идет по правому свет.конусу)
+  // Нулевая: t = x
   {
     const pts = [];
     for (let k = 0; k <= samples; k++) {
@@ -841,7 +855,7 @@ function drawPenroseDiagram() {
     }
     drawCurve(pts, "#ff0", 1.2);
   }
-  // Пространствоподобная: t=0 (простая линия «сейчас»)
+  // Пространствоподобная: t=0
   {
     const pts = [];
     const t = 0;
@@ -862,15 +876,14 @@ function drawPenroseDiagram() {
   drawText("i⁻",   0, -L*0.95, "#fff", "#fff", 11);
   drawText("i⁰",   L*0.9, 0, "#fff", "#fff", 11);
 
-  drawPoint(0, 0, 2, "#fff", "#fff");
+  drawPoint(0, 0, 2, "#fff", "#fff);
 }
 
-// === ДИСК ПУАНКАРЕ (D) — H², пространство скоростей ===
+// === ДИСК ПУАНКАРЕ (D) ===
 function drawPoincareDisk() {
   const extent = lineSpacing * 8;
   const R = extent * 0.9;
 
-  // Окружность диска (граница)
   const c = toScreen(0, 0);
   ctx.strokeStyle = "#0ff";
   ctx.lineWidth = 1.5;
@@ -879,7 +892,6 @@ function drawPoincareDisk() {
   ctx.arc(c.x, c.y, R * scale, 0, 2*Math.PI);
   ctx.stroke();
 
-  // Диаметры (геодезики)
   const nDiam = 8;
   for (let i = 0; i < nDiam; i++) {
     const phi = i * Math.PI / nDiam;
@@ -888,7 +900,6 @@ function drawPoincareDisk() {
     drawLine(-x, -y, x, y, "#044", "#0aa", 0.7);
   }
 
-  // Концентрические окружности
   const nCircles = 4;
   for (let i = 1; i <= nCircles; i++) {
     const r = R * i / (nCircles + 1);
@@ -901,7 +912,6 @@ function drawPoincareDisk() {
     ctx.setLineDash([]);
   }
 
-  // Пара «гиперболических» геодезик (окружности, ортогональные границе)
   function drawGeodesicCircle(x0, y0, rad) {
     const points = [];
     const N = 80;
@@ -916,16 +926,13 @@ function drawPoincareDisk() {
     }
     drawCurve(points, "#0f0", 1.0);
   }
-  // Примеры двух геодезик
   drawGeodesicCircle(0, -R*0.5, R*0.5);
   drawGeodesicCircle(0, -R*0.7, R*0.7);
 
-  // Скорость как точка в диске (пространство скоростей)
   const beta = Math.sin(angle);
   const absBeta = Math.abs(beta);
   if (absBeta > 0) {
-    // η = artanh(v), rHyper = tanh(η/2)
-    const eta = 0.5 * Math.log((1 + absBeta) / (1 - absBeta)); // artanh(|v|)
+    const eta = 0.5 * Math.log((1 + absBeta) / (1 - absBeta));
     const rHyper = Math.tanh(eta / 2);
     const rWorld = rHyper * R;
     const sign = beta >= 0 ? 1 : -1;
@@ -938,24 +945,20 @@ function drawPoincareDisk() {
   drawText("Poincaré disk (H² / velocities)", 0, -R*1.2, "#0ff", "#0ff", 11);
 }
 
-// === AdS/CFT (A) — Poincaré-полу-пространство ===
+// === AdS/CFT (A) ===
 function drawAdSDiagram() {
   const extent = lineSpacing * 8;
   const Lx = extent * 1.2;
   const Lz = extent * 0.9;
 
-  // Граница CFT при z=0
   drawLine(-Lx, 0, Lx, 0, "#0ff", "#0ff", 1.2);
   drawText("CFT boundary (z = 0)", 0, -Lz*0.15, "#0ff", "#0ff", 11);
 
-  // «Глубина» AdS (z > 0)
   const Nz = 7;
   const Nx = 8;
   for (let iz = 1; iz <= Nz; iz++) {
-    // Располагаем линии z по геометрической прогрессии, чтобы уплотнялись к границе
     const s = iz / (Nz + 1);
     const z = Lz * Math.pow(s, 1.2);
-    // горизонтальные линии z = const
     drawDashedLine(-Lx, z, Lx, z, "#044", "#066", 0.6, [4,4]);
   }
   for (let ix = -Nx; ix <= Nx; ix++) {
@@ -963,7 +966,6 @@ function drawAdSDiagram() {
     drawDashedLine(x, 0, x, Lz, "#033", "#055", 0.5, [3,5]);
   }
 
-  // Пара точек оператора на границе
   const xA = -Lx * 0.6;
   const xB =  Lx * 0.6;
   drawPoint(xA, 0, 3, "#ff0", "#ff0");
@@ -971,7 +973,6 @@ function drawAdSDiagram() {
   drawText("O₁", xA, -Lz*0.06, "#ff0", "#ff0", 11);
   drawText("O₂", xB, -Lz*0.06, "#ff0", "#ff0", 11);
 
-  // Геодезики в AdS, соединяющие точки на границе — типичный AdS/CFT рисунок
   function drawSemiCircle(xc, zc, R) {
     const pts = [];
     const N = 80;
@@ -983,10 +984,9 @@ function drawAdSDiagram() {
     }
     drawCurve(pts, "#0f0", 1.5);
   }
-  // Круг с центром под «землёй» (zc < 0), ортогональный границе
   const xc1 = 0;
   const R1  = Lx * 0.6;
-  const zc1 = -0.0001; // почти на границе
+  const zc1 = -0.0001;
   drawSemiCircle(xc1, zc1, R1);
 
   const xc2 = 0;
@@ -994,12 +994,9 @@ function drawAdSDiagram() {
   const zc2 = -0.0001;
   drawSemiCircle(xc2, zc2, R2);
 
-  // Подписи зон
   drawText("AdS bulk (Poincaré patch)", 0, Lz*0.55, "#0ff", "#0ff", 11);
   drawText("z", -Lx*0.9, Lz*0.9, "#0ff", "#0ff", 11, "left");
   drawText("x", Lx*0.95, Lz*0.9, "#0ff", "#0ff", 11, "right");
-
-  // Условная стрелка времени наверху (t идёт «вперёд из плоскости»)
   drawText("t → (out of plane)", 0, -Lz*0.35, "#0aa", "#0aa", 10);
 }
 
@@ -1007,17 +1004,11 @@ function drawAdSDiagram() {
 function animate() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   
-  if (mode === 'E') {
-    drawOriginalDiagram();
-  } else if (mode === 'M') {
-    drawMinkowskiDiagram();
-  } else if (mode === 'P') {
-    drawPenroseDiagram();
-  } else if (mode === 'D') {
-    drawPoincareDisk();
-  } else if (mode === 'A') {
-    drawAdSDiagram();
-  }
+  if (mode === 'E')      drawOriginalDiagram();
+  else if (mode === 'M') drawMinkowskiDiagram();
+  else if (mode === 'P') drawPenroseDiagram();
+  else if (mode === 'D') drawPoincareDisk();
+  else if (mode === 'A') drawAdSDiagram();
   
   requestAnimationFrame(animate);
 }
