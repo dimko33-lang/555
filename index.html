@@ -34,10 +34,10 @@
     top: 8px;
     right: 8px;
     display: flex;
-    gap: 4px;
+    gap: 2px;              /* было 4px */
     flex-wrap: nowrap;
     justify-content: flex-end;
-    max-width: 220px;
+    max-width: none;       /* было 220px */
     z-index: 100;
   }
   .btn {
@@ -63,6 +63,19 @@
   .btn:active {
     background: rgba(0, 30, 100, 0.9) !important;
   }
+
+  /* Кнопки режимов: компактнее, чтобы помещались в ряд */
+  .mode-btn{
+    min-width: 26px;
+    padding: 0;
+    font-size: 13px;
+  }
+  /* Подсветка активного режима */
+  .btn.active{
+    background: rgba(0, 40, 140, 0.55) !important;
+    border-color: rgba(0, 255, 255, 0.6) !important;
+  }
+
   .info-panel {
     position: fixed;
     top: 8px;
@@ -131,7 +144,12 @@
 </div>
 
 <div class="controls">
-  <button class="btn" id="modeBtn" title="Toggle Diagram">E</button>
+  <button class="btn mode-btn" data-mode="E" title="Euclidean" aria-pressed="true">E</button>
+  <button class="btn mode-btn" data-mode="M" title="Minkowski" aria-pressed="false">M</button>
+  <button class="btn mode-btn" data-mode="P" title="Penrose" aria-pressed="false">P</button>
+  <button class="btn mode-btn" data-mode="D" title="Poincaré disk" aria-pressed="false">D</button>
+  <button class="btn mode-btn" data-mode="A" title="AdS/CFT" aria-pressed="false">A</button>
+
   <button class="btn" id="zoomReset" title="Reset scale">↻</button>
   <button class="btn" id="fullscreen" title="Fullscreen mode">FS</button>
 </div>
@@ -320,13 +338,29 @@ canvas.addEventListener("wheel", e => {
   offsetY = mouseY - worldY * scale;
 });
 
-// Кнопка режимов
-const modeBtn = document.getElementById('modeBtn');
-modeBtn.textContent = mode;
-modeBtn.addEventListener('click', () => {
-  modeIndex = (modeIndex + 1) % modes.length;
-  mode = modes[modeIndex];
-  modeBtn.textContent = mode;
+// === Кнопки режимов (E/M/P/D/A) ===
+const modeButtons = Array.from(document.querySelectorAll('.mode-btn'));
+
+function setMode(newMode) {
+  if (!modes.includes(newMode)) return;
+  mode = newMode;
+  modeIndex = modes.indexOf(newMode);
+
+  modeButtons.forEach(btn => {
+    const isActive = btn.dataset.mode === mode;
+    btn.classList.toggle('active', isActive);
+    btn.setAttribute('aria-pressed', String(isActive));
+  });
+
+  // если фуллскрин включен и forceDarkTheme уже навесил inline-стили,
+  // обновим подсветку активной кнопки на всякий случай
+  if (typeof forceDarkTheme === 'function') {
+    forceDarkTheme();
+  }
+}
+
+modeButtons.forEach(btn => {
+  btn.addEventListener('click', () => setMode(btn.dataset.mode));
 });
 
 // reset scale
@@ -343,6 +377,24 @@ if (isFullscreenSupported()) {
     fullscreenBtn.textContent = 'FS';
     fullscreenBtn.title = isFullscreen ? 'Exit fullscreen' : 'Fullscreen mode';
   }
+
+  function forceDarkTheme() {
+    document.body.style.backgroundColor = '#000833';
+    document.body.style.color = 'white';
+    document.querySelectorAll('.btn').forEach(btn => {
+      const isActive = btn.classList.contains('active');
+      btn.style.backgroundColor = isActive ? 'rgba(0, 40, 140, 0.55)' : 'rgba(0, 8, 51, 0.7)';
+      btn.style.color = 'white';
+      btn.style.borderColor = isActive ? 'rgba(0, 255, 255, 0.6)' : 'rgba(255,255,255,0.3)';
+    });
+    const infoPanel = document.querySelector('.info-panel');
+    if (infoPanel) {
+      infoPanel.style.backgroundColor = 'rgba(0, 8, 51, 0.7)';
+      infoPanel.style.color = 'white';
+      infoPanel.style.borderColor = 'rgba(255,255,255,0.2)';
+    }
+  }
+
   fullscreenBtn.addEventListener('click', () => {
     const isFullscreen = !!getFullscreenElement();
     if (!isFullscreen) {
@@ -357,21 +409,7 @@ if (isFullscreenSupported()) {
       });
     }
   });
-  function forceDarkTheme() {
-    document.body.style.backgroundColor = '#000833';
-    document.body.style.color = 'white';
-    document.querySelectorAll('.btn').forEach(btn => {
-      btn.style.backgroundColor = 'rgba(0, 8, 51, 0.7)';
-      btn.style.color = 'white';
-      btn.style.borderColor = 'rgba(255,255,255,0.3)';
-    });
-    const infoPanel = document.querySelector('.info-panel');
-    if (infoPanel) {
-      infoPanel.style.backgroundColor = 'rgba(0, 8, 51, 0.7)';
-      infoPanel.style.color = 'white';
-      infoPanel.style.borderColor = 'rgba(255,255,255,0.2)';
-    }
-  }
+
   document.addEventListener('fullscreenchange', () => {
     updateFullscreenButton();
     forceDarkTheme();
@@ -414,7 +452,7 @@ function updateInfo() {
     }
     if (velocity < 0) velocityStr = "-" + velocityStr;
   }
-  
+
   let gamma = 1;
   const v = Math.abs(velocity);
   if (v < 0.999999999999) {
@@ -422,7 +460,7 @@ function updateInfo() {
   } else {
     gamma = TARGET_GAMMA;
   }
-  
+
   let gammaStr;
   if (Math.abs(Math.abs(angle) - MAX_ANGLE) < 0.0000001) {
     gammaStr = TARGET_GAMMA.toFixed(3);
@@ -433,10 +471,10 @@ function updateInfo() {
   } else {
     gammaStr = gamma.toFixed(3);
   }
-  
+
   document.getElementById('speedValue').textContent = velocityStr;
   document.getElementById('gammaValue').textContent = gammaStr;
-  
+
   const speedValue = document.getElementById('speedValue');
   const absV = Math.abs(velocity);
   if (absV < 0.3) {
@@ -561,7 +599,7 @@ function drawOriginalDiagram() {
   const cosA = Math.cos(angle);
   const sinA = Math.sin(angle);
   const extent = lineSpacing * 10;
-  
+
   drawLine(-extent, cy, extent, cy, "#0ff", "#08f", 1);
   const ctX0 = cx - sinA * extent;
   const ctY0 = cy - cosA * extent;
@@ -587,7 +625,7 @@ function drawOriginalDiagram() {
   const xUnitY = xDirY / xLength;
   const xPerpX = -xUnitY;
   const xPerpY = xUnitX;
-  
+
   for(let sec = 1; sec <= secondsPerSide; sec++) {
     const distance = sec * lineSpacing;
     const bigX1 = distance * ctUnitX;
@@ -610,7 +648,7 @@ function drawOriginalDiagram() {
     const halfY2 = -halfDistance * ctUnitY;
     drawMark(halfX2, halfY2, ctPerpX, ctPerpY, 10, "#0aa", "#06a", 1.0, "dashed");
   }
-  
+
   if (scale > 0.7) {
     const smallMarksPerSide = secondsPerSide * 10;
     for(let tenth = 1; tenth <= smallMarksPerSide; tenth++) {
@@ -625,12 +663,12 @@ function drawOriginalDiagram() {
     }
   }
 
-  for(let i = -10; i <= 10; i++){ 
-    const t = i / 10; 
-    const px = xX0 + (xX1 - xX0) * (0.5 + t/2); 
+  for(let i = -10; i <= 10; i++){
+    const t = i / 10;
+    const px = xX0 + (xX1 - xX0) * (0.5 + t/2);
     const py = xY0 + (xY1 - xY0) * (0.5 + t/2);
     drawLine(px, py - extent, px, py + extent, "#888", "#666", 1);
-    
+
     for(let sec = 1; sec <= secondsPerSide; sec++) {
       const distance = sec * lineSpacing;
       const upX = px;
@@ -653,7 +691,7 @@ function drawOriginalDiagram() {
       const halfDownY = py + halfDistance;
       drawMark(halfDownX, halfDownY, 1, 0, 9, "#888", "#666", 1.0, "dashed");
     }
-    
+
     if (scale > 0.7) {
       for(let tenth = 1; tenth <= secondsPerSide * 10; tenth++) {
         if (tenth % 5 === 0) continue;
@@ -666,7 +704,7 @@ function drawOriginalDiagram() {
         drawPoint(downX, downY, 1.5, "#888", "#666");
       }
     }
-    
+
     if (scale > 0.7 && i !== 0) {
       drawText(i.toString(), px, py + 20, "#888", "#666", 10);
     }
@@ -683,14 +721,14 @@ function drawMinkowskiDiagram() {
   drawDashedLine(-extent, -extent, extent, extent, "#ff0", "#880", 0.6, [4, 4]);
   drawDashedLine(-extent, extent, extent, -extent, "#ff0", "#880", 0.6, [4, 4]);
   const gridStep = lineSpacing;
-  
+
   for (let i = -Math.floor(extent/gridStep); i <= Math.floor(extent/gridStep); i++) {
     if (i === 0) continue;
     const x = i * gridStep;
     drawDashedLine(x, -extent, x, extent, "#044", "#06a", 0.4, [3, 5]);
     drawDashedLine(-extent, x, extent, x, "#044", "#06a", 0.4, [3, 5]);
   }
-  
+
   const beta = Math.sin(angle);
   const visBetaLimit = 0.999;
   let visBeta = beta;
@@ -700,7 +738,7 @@ function drawMinkowskiDiagram() {
     const limitedBeta = 0.707 + (visBetaLimit - 0.707) * t;
     visBeta = Math.min(absBeta, limitedBeta) * Math.sign(beta);
   }
-  
+
   const visGamma = 1 / Math.sqrt(1 - visBeta * visBeta);
   const maxGamma = 50;
   const drawGamma = Math.min(visGamma, maxGamma);
@@ -709,10 +747,10 @@ function drawMinkowskiDiagram() {
   const drawCtPrimeY = drawGamma;
   const drawXPrimeX = drawGamma;
   const drawXPrimeY = drawBeta * drawGamma;
-  
+
   drawLine(-drawCtPrimeX * extent, -drawCtPrimeY * extent, drawCtPrimeX * extent, drawCtPrimeY * extent, "#888", "#666", 1.5);
   drawLine(-drawXPrimeX * extent, -drawXPrimeY * extent, drawXPrimeX * extent, drawXPrimeY * extent, "#888", "#666", 1.5);
-  
+
   for (let i = -Math.floor(extent/gridStep); i <= Math.floor(extent/gridStep); i++) {
     const offset = i * gridStep;
     const x1 = -drawXPrimeX * extent + drawCtPrimeX * offset;
@@ -735,7 +773,7 @@ function drawMinkowskiDiagram() {
     ctx.lineTo(p2.x, p2.y);
     ctx.stroke();
     ctx.setLineDash([]);
-    
+
     const x3 = -drawCtPrimeX * extent + drawXPrimeX * offset;
     const y3 = -drawCtPrimeY * extent + drawXPrimeY * offset;
     const x4 = drawCtPrimeX * extent + drawXPrimeX * offset;
@@ -757,7 +795,7 @@ function drawMinkowskiDiagram() {
     ctx.stroke();
     ctx.setLineDash([]);
   }
-  
+
   drawPoint(0, 0, 2, "#fff", "#fff");
 }
 
@@ -1006,7 +1044,7 @@ function drawAdSDiagram() {
 // === ГЛАВНЫЙ ЦИКЛ ===
 function animate() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  
+
   if (mode === 'E') {
     drawOriginalDiagram();
   } else if (mode === 'M') {
@@ -1018,11 +1056,12 @@ function animate() {
   } else if (mode === 'A') {
     drawAdSDiagram();
   }
-  
+
   requestAnimationFrame(animate);
 }
 
 updateInfo();
+setMode(mode);   // выставляем активную кнопку режима
 animate();
 </script>
 </body>
