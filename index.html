@@ -171,7 +171,7 @@ let offsetX = 0, offsetY = 0;
 // E — евклидовый «наклон осей»
 // M — Минковский
 // P — Пенроуз (Minkowski 1+1)
-// D — Диск (наша геометрия с источником)
+// D — Диск (кастомная геометрия)
 // A — AdS/CFT
 const modes = ['E', 'M', 'P', 'D', 'A'];
 let modeIndex = 0;
@@ -194,10 +194,10 @@ const smallSpacing = lineSpacing / 10;
 
 // === D MODE: перемещаемый источник ===
 let diskSourceX = 0;
-let diskSourceY = 0;
+let diskSourceY = 0; // фиксируем по ТЗ: движение только по горизонтали (y не меняется)
 
 function getDiskExtent() {
-  // делаем как у M и E (там extent = lineSpacing * 10)
+  // делаем таким же как у M и E (там extent = lineSpacing * 10)
   return lineSpacing * 10;
 }
 function getDiskRadius() {
@@ -213,19 +213,18 @@ function screenToWorld(clientX, clientY) {
     y: (sy - offsetY) / scale
   };
 }
-function moveDiskSourceToClient(clientX, clientY) {
-  const p = screenToWorld(clientX, clientY);
+function moveDiskSourceToClientX(clientX) {
+  // двигаем только по X, Y остаётся фиксированным
+  const rect = canvas.getBoundingClientRect();
+  const sx = clientX - rect.left;
+  const worldX = (sx - offsetX) / scale;
+
   const R = getDiskRadius();
-  const r = Math.sqrt(p.x*p.x + p.y*p.y);
-  const maxR = R * 0.999; // чтобы гарантированно оставаться "внутри"
-  if (r > maxR && r > 0) {
-    const k = maxR / r;
-    diskSourceX = p.x * k;
-    diskSourceY = p.y * k;
-  } else {
-    diskSourceX = p.x;
-    diskSourceY = p.y;
-  }
+  const sy = diskSourceY;
+  const rad = Math.max(0, R*R - sy*sy);
+  const maxX = Math.sqrt(rad) * 0.999; // чуть внутри окружности
+
+  diskSourceX = Math.max(-maxX, Math.min(maxX, worldX));
 }
 
 // МУЛЬТИТАЧ
@@ -329,7 +328,7 @@ canvas.addEventListener('touchstart', (e) => {
     if (mode === 'D') {
       draggingSource = true;
       draggingAngle = false;
-      moveDiskSourceToClient(t.clientX, t.clientY);
+      moveDiskSourceToClientX(t.clientX);
     } else {
       draggingAngle = true;
       draggingSource = false;
@@ -371,7 +370,7 @@ canvas.addEventListener('touchmove', (e) => {
   } else if (e.touches.length === 1) {
     const t = e.touches[0];
     if (draggingSource && mode === 'D') {
-      moveDiskSourceToClient(t.clientX, t.clientY);
+      moveDiskSourceToClientX(t.clientX);
     } else if (draggingAngle) {
       const dx = t.clientX - lastX;
       angle += dx * 0.01;
@@ -395,7 +394,7 @@ canvas.addEventListener("pointerdown", e => {
   if (mode === 'D') {
     draggingSource = true;
     draggingAngle = false;
-    moveDiskSourceToClient(e.clientX, e.clientY);
+    moveDiskSourceToClientX(e.clientX);
   } else {
     draggingAngle = true;
     draggingSource = false;
@@ -404,7 +403,7 @@ canvas.addEventListener("pointerdown", e => {
 });
 canvas.addEventListener("pointermove", e => {
   if (draggingSource && mode === 'D') {
-    moveDiskSourceToClient(e.clientX, e.clientY);
+    moveDiskSourceToClientX(e.clientX);
   } else if (draggingAngle) {
     const dx = e.clientX - lastX;
     angle += dx * 0.01;
@@ -1009,55 +1008,51 @@ function drawPenroseDiagram() {
   drawText("Penrose (Minkowski 1+1 compactification)", 0, -L*1.08, "#0ff", "#0ff", 11);
 }
 
-// === D (ДИСК) — по твоему ТЗ ===
+// === D (ДИСК) — по твоему ТЗ (обновлённое) ===
 function drawDiskCustom() {
-  const extent = getDiskExtent();     // как у M/E
-  const R = getDiskRadius();          // радиус диска
+  const R = getDiskRadius();
   const cx = 0, cy = 0;
+
+  // Тоньше линии
+  const W_CIRCLE = 1.4;
+  const W_MAIN   = 1.4;
+  const W_HYP    = 0.8;
 
   // 1) Желтая окружность
   const c = toScreen(cx, cy);
   ctx.strokeStyle = "#ff0";
-  ctx.lineWidth = 2.0;
+  ctx.lineWidth = W_CIRCLE;
   ctx.setLineDash([]);
   ctx.beginPath();
   ctx.arc(c.x, c.y, R * scale, 0, 2*Math.PI);
   ctx.stroke();
 
-  // Центр (не просили, но полезно)
+  // Центр
   drawPoint(0, 0, 2, "#fff", "#fff");
 
-  // 2) Красный перемещаемый источник
+  // 2) Источник — жёлтый, перемещаемый ТОЛЬКО по X
   const sx = diskSourceX;
   const sy = diskSourceY;
-  drawPoint(sx, sy, 4, "#f00", "#f00");
+  drawPoint(sx, sy, 4, "#ff0", "#ff0");
 
-  // 3) От него идёт вертикальный отрезок до границы окружности (голубой)
-  // Берём верхнюю точку пересечения вертикали x=sx с окружностью: yTop = -sqrt(R^2 - sx^2)
+  // 3) Вертикальный отрезок (голубой) от источника до границы окружности (вверх)
   const radV = Math.max(0, R*R - sx*sx);
-  const yTop = -Math.sqrt(radV);
+  const yTop = -Math.sqrt(radV); // верхняя точка окружности на вертикали x=sx
+  drawLine(sx, sy, sx, yTop, "#0ff", "#0ff", W_MAIN);
 
-  // Голубой вертикальный отрезок от источника до верхней границы
-  drawLine(sx, sy, sx, yTop, "#0ff", "#0ff", 2.2);
+  // 4) Гипотенуза от центра к точке касания голубого отрезка с окружностью — серая, самая тонкая
+  drawLine(0, 0, sx, yTop, "#888", "#888", W_HYP);
 
-  // 4) От центра окружности — гипотенуза до касания голубого отрезка с окружностью
-  // (точка касания = (sx, yTop))
-  drawLine(0, 0, sx, yTop, "#fff", "#fff", 1.8);
-
-  // 5) Два отрезка от источника до "передней" и "задней" границы окружности
-  // Интерпретация: передняя/задняя по горизонтали (вправо/влево) из источника.
+  // 5) Отрезки от источника до передней/задней границы окружности по горизонтали (y=sy)
   const radH = Math.max(0, R*R - sy*sy);
   const xRight = Math.sqrt(radH);
   const xLeft  = -xRight;
 
   // До передней (вправо) — синий
-  drawLine(sx, sy, xRight, sy, "#08f", "#08f", 2.6);
+  drawLine(sx, sy, xRight, sy, "#08f", "#08f", W_MAIN);
 
   // До задней (влево) — красный
-  drawLine(sx, sy, xLeft, sy, "#f00", "#f00", 2.6);
-
-  // Подпись (не обязательна)
-  // drawText("Drag the red source", 0, -R*1.15, "#ff0", "#ff0", 11);
+  drawLine(sx, sy, xLeft, sy, "#f00", "#f00", W_MAIN);
 }
 
 // === AdS/CFT (A) — Poincaré-полу-пространство ===
