@@ -145,7 +145,7 @@
   <button class="btn mode-btn" data-mode="E" title="Euclidean" aria-pressed="true">E</button>
   <button class="btn mode-btn" data-mode="M" title="Minkowski" aria-pressed="false">M</button>
   <button class="btn mode-btn" data-mode="P" title="Penrose" aria-pressed="false">P</button>
-  <button class="btn mode-btn" data-mode="D" title="Poincaré disk" aria-pressed="false">D</button>
+  <button class="btn mode-btn" data-mode="D" title="Disk" aria-pressed="false">D</button>
   <button class="btn mode-btn" data-mode="A" title="AdS/CFT" aria-pressed="false">A</button>
 
   <button class="btn" id="zoomReset" title="Reset scale">↻</button>
@@ -158,8 +158,12 @@ const ctx = canvas.getContext("2d");
 
 // Параметры визуализации
 let angle = 0;
-let dragging = false;
+
+// Перетаскивание: либо вращаем (угол), либо двигаем источник в D
+let draggingAngle = false;
+let draggingSource = false;
 let lastX = 0;
+
 let scale = 0.3;
 let offsetX = 0, offsetY = 0;
 
@@ -167,8 +171,8 @@ let offsetX = 0, offsetY = 0;
 // E — евклидовый «наклон осей»
 // M — Минковский
 // P — Пенроуз (Minkowski 1+1)
-// D — диск Пуанкаре (гиперболика / скорости)
-// A — AdS/CFT (плоскость Пуанкаре, полу-пространство)
+// D — Диск (наша геометрия с источником)
+// A — AdS/CFT
 const modes = ['E', 'M', 'P', 'D', 'A'];
 let modeIndex = 0;
 let mode = modes[modeIndex];
@@ -187,6 +191,42 @@ const MAX_ANGLE = Math.asin(TARGET_V);
 const lineSpacing = vertLineLength / (numLines - 1);
 const halfSpacing = lineSpacing / 2;
 const smallSpacing = lineSpacing / 10;
+
+// === D MODE: перемещаемый источник ===
+let diskSourceX = 0;
+let diskSourceY = 0;
+
+function getDiskExtent() {
+  // делаем как у M и E (там extent = lineSpacing * 10)
+  return lineSpacing * 10;
+}
+function getDiskRadius() {
+  // чуть меньше extent, чтобы уверенно помещалось в экран при fitToScreen
+  return getDiskExtent() * 0.9;
+}
+function screenToWorld(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  const sx = clientX - rect.left;
+  const sy = clientY - rect.top;
+  return {
+    x: (sx - offsetX) / scale,
+    y: (sy - offsetY) / scale
+  };
+}
+function moveDiskSourceToClient(clientX, clientY) {
+  const p = screenToWorld(clientX, clientY);
+  const R = getDiskRadius();
+  const r = Math.sqrt(p.x*p.x + p.y*p.y);
+  const maxR = R * 0.999; // чтобы гарантированно оставаться "внутри"
+  if (r > maxR && r > 0) {
+    const k = maxR / r;
+    diskSourceX = p.x * k;
+    diskSourceY = p.y * k;
+  } else {
+    diskSourceX = p.x;
+    diskSourceY = p.y;
+  }
+}
 
 // МУЛЬТИТАЧ
 let touchStartDistance = null;
@@ -228,115 +268,6 @@ function exitFullscreen() {
   return Promise.reject(new Error('Fullscreen API not supported'));
 }
 
-// Управление (тач/мышь)
-function getTouchDistance(touches) {
-  const dx = touches[0].clientX - touches[1].clientX;
-  const dy = touches[0].clientY - touches[1].clientY;
-  return Math.sqrt(dx * dx + dy * dy);
-}
-function getTouchAngle(touches) {
-  const dx = touches[0].clientX - touches[1].clientX;
-  const dy = touches[0].clientY - touches[1].clientY;
-  return Math.atan2(dy, dx);
-}
-
-canvas.addEventListener('touchstart', (e) => {
-  e.preventDefault();
-  if (e.touches.length === 2) {
-    const rect = canvas.getBoundingClientRect();
-    const touch1 = e.touches[0];
-    const touch2 = e.touches[1];
-    touchStartDistance = getTouchDistance(e.touches);
-    touchStartAngle = getTouchAngle(e.touches);
-    touchStartCenterX = (touch1.clientX + touch2.clientX) / 2 - rect.left;
-    touchStartCenterY = (touch1.clientY + touch2.clientY) / 2 - rect.top;
-    touchStartScale = scale;
-    touchStartAngleSystem = angle;
-    touchStartOffsetX = offsetX;
-    touchStartOffsetY = offsetY;
-    touchStartWorldX = (touchStartCenterX - touchStartOffsetX) / touchStartScale;
-    touchStartWorldY = (touchStartCenterY - touchStartOffsetY) / touchStartScale;
-    dragging = false;
-  } else if (e.touches.length === 1) {
-    dragging = true;
-    lastX = e.touches[0].clientX;
-  }
-}, { passive: false });
-
-canvas.addEventListener('touchmove', (e) => {
-  e.preventDefault();
-  if (e.touches.length === 2 && touchStartDistance !== null && touchStartDistance > 0) {
-    const rect = canvas.getBoundingClientRect();
-    const touch1 = e.touches[0];
-    const touch2 = e.touches[1];
-    const currentDistance = getTouchDistance(e.touches);
-    const currentAngle = getTouchAngle(e.touches);
-    const currentCenterX = (touch1.clientX + touch2.clientX) / 2 - rect.left;
-    const currentCenterY = (touch1.clientY + touch2.clientY) / 2 - rect.top;
-    const zoomFactor = currentDistance / touchStartDistance;
-    const newScale = Math.max(0.1, Math.min(5, touchStartScale * zoomFactor));
-    const angleDelta = currentAngle - touchStartAngle;
-    let newAngle = touchStartAngleSystem - angleDelta * 0.8;
-    newAngle = Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, newAngle));
-    const newOffsetX = currentCenterX - touchStartWorldX * newScale;
-    const newOffsetY = currentCenterY - touchStartWorldY * newScale;
-    scale = newScale;
-    angle = newAngle;
-    offsetX = newOffsetX;
-    offsetY = newOffsetY;
-    updateInfo();
-  } else if (e.touches.length === 1 && dragging) {
-    const dx = e.touches[0].clientX - lastX;
-    angle += dx * 0.01;
-    angle = Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, angle));
-    lastX = e.touches[0].clientX;
-    updateInfo();
-  }
-}, { passive: false });
-
-canvas.addEventListener('touchend', (e) => {
-  dragging = false;
-  if (e.touches.length < 2) {
-    touchStartDistance = null;
-    touchStartAngle = null;
-  }
-});
-
-canvas.addEventListener("pointerdown", e => {
-  dragging = true;
-  lastX = e.clientX;
-});
-canvas.addEventListener("pointermove", e => {
-  if(dragging){
-    const dx = e.clientX - lastX;
-    angle += dx * 0.01;
-    angle = Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, angle));
-    lastX = e.clientX;
-    updateInfo();
-  }
-});
-canvas.addEventListener("pointerup", e => dragging = false);
-canvas.addEventListener("pointerleave", e => dragging = false);
-
-canvas.addEventListener("wheel", e => {
-  e.preventDefault();
-  const zoomFactor = 1.1;
-  const rect = canvas.getBoundingClientRect();
-  const mouseX = e.clientX - rect.left;
-  const mouseY = e.clientY - rect.top;
-  const worldX = (mouseX - offsetX) / scale;
-  const worldY = (mouseY - offsetY) / scale;
-  if (e.deltaY < 0) {
-    scale *= zoomFactor;
-  } else {
-    scale /= zoomFactor;
-  }
-  scale = Math.max(0.1, Math.min(5, scale));
-  offsetX = mouseX - worldX * scale;
-  offsetY = mouseY - worldY * scale;
-});
-
-// === Theme re-apply (нужно в fullscreen, чтобы не "светлело") ===
 function applyDarkTheme() {
   document.body.style.backgroundColor = '#000833';
   document.body.style.color = 'white';
@@ -356,6 +287,159 @@ function applyDarkTheme() {
   }
 }
 
+// Управление (тач/мышь)
+function getTouchDistance(touches) {
+  const dx = touches[0].clientX - touches[1].clientX;
+  const dy = touches[0].clientY - touches[1].clientY;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+function getTouchAngle(touches) {
+  const dx = touches[0].clientX - touches[1].clientX;
+  const dy = touches[0].clientY - touches[1].clientY;
+  return Math.atan2(dy, dx);
+}
+
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+
+  if (e.touches.length === 2) {
+    const rect = canvas.getBoundingClientRect();
+    const touch1 = e.touches[0];
+    const touch2 = e.touches[1];
+
+    touchStartDistance = getTouchDistance(e.touches);
+    touchStartAngle = getTouchAngle(e.touches);
+
+    touchStartCenterX = (touch1.clientX + touch2.clientX) / 2 - rect.left;
+    touchStartCenterY = (touch1.clientY + touch2.clientY) / 2 - rect.top;
+
+    touchStartScale = scale;
+    touchStartAngleSystem = angle;
+
+    touchStartOffsetX = offsetX;
+    touchStartOffsetY = offsetY;
+
+    touchStartWorldX = (touchStartCenterX - touchStartOffsetX) / touchStartScale;
+    touchStartWorldY = (touchStartCenterY - touchStartOffsetY) / touchStartScale;
+
+    draggingAngle = false;
+    draggingSource = false;
+  } else if (e.touches.length === 1) {
+    const t = e.touches[0];
+    if (mode === 'D') {
+      draggingSource = true;
+      draggingAngle = false;
+      moveDiskSourceToClient(t.clientX, t.clientY);
+    } else {
+      draggingAngle = true;
+      draggingSource = false;
+      lastX = t.clientX;
+    }
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+
+  if (e.touches.length === 2 && touchStartDistance !== null && touchStartDistance > 0) {
+    const rect = canvas.getBoundingClientRect();
+    const touch1 = e.touches[0];
+    const touch2 = e.touches[1];
+
+    const currentDistance = getTouchDistance(e.touches);
+    const currentAngle = getTouchAngle(e.touches);
+
+    const currentCenterX = (touch1.clientX + touch2.clientX) / 2 - rect.left;
+    const currentCenterY = (touch1.clientY + touch2.clientY) / 2 - rect.top;
+
+    const zoomFactor = currentDistance / touchStartDistance;
+    const newScale = Math.max(0.1, Math.min(5, touchStartScale * zoomFactor));
+
+    const angleDelta = currentAngle - touchStartAngle;
+    let newAngle = touchStartAngleSystem - angleDelta * 0.8;
+    newAngle = Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, newAngle));
+
+    const newOffsetX = currentCenterX - touchStartWorldX * newScale;
+    const newOffsetY = currentCenterY - touchStartWorldY * newScale;
+
+    scale = newScale;
+    angle = newAngle;
+    offsetX = newOffsetX;
+    offsetY = newOffsetY;
+
+    updateInfo();
+  } else if (e.touches.length === 1) {
+    const t = e.touches[0];
+    if (draggingSource && mode === 'D') {
+      moveDiskSourceToClient(t.clientX, t.clientY);
+    } else if (draggingAngle) {
+      const dx = t.clientX - lastX;
+      angle += dx * 0.01;
+      angle = Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, angle));
+      lastX = t.clientX;
+      updateInfo();
+    }
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchend', (e) => {
+  draggingAngle = false;
+  draggingSource = false;
+  if (e.touches.length < 2) {
+    touchStartDistance = null;
+    touchStartAngle = null;
+  }
+});
+
+canvas.addEventListener("pointerdown", e => {
+  if (mode === 'D') {
+    draggingSource = true;
+    draggingAngle = false;
+    moveDiskSourceToClient(e.clientX, e.clientY);
+  } else {
+    draggingAngle = true;
+    draggingSource = false;
+    lastX = e.clientX;
+  }
+});
+canvas.addEventListener("pointermove", e => {
+  if (draggingSource && mode === 'D') {
+    moveDiskSourceToClient(e.clientX, e.clientY);
+  } else if (draggingAngle) {
+    const dx = e.clientX - lastX;
+    angle += dx * 0.01;
+    angle = Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, angle));
+    lastX = e.clientX;
+    updateInfo();
+  }
+});
+canvas.addEventListener("pointerup", () => {
+  draggingAngle = false;
+  draggingSource = false;
+});
+canvas.addEventListener("pointerleave", () => {
+  draggingAngle = false;
+  draggingSource = false;
+});
+
+canvas.addEventListener("wheel", e => {
+  e.preventDefault();
+  const zoomFactor = 1.1;
+  const rect = canvas.getBoundingClientRect();
+  const mouseX = e.clientX - rect.left;
+  const mouseY = e.clientY - rect.top;
+  const worldX = (mouseX - offsetX) / scale;
+  const worldY = (mouseY - offsetY) / scale;
+  if (e.deltaY < 0) {
+    scale *= zoomFactor;
+  } else {
+    scale /= zoomFactor;
+  }
+  scale = Math.max(0.1, Math.min(5, scale));
+  offsetX = mouseX - worldX * scale;
+  offsetY = mouseY - worldY * scale;
+});
+
 // === Кнопки режимов (E/M/P/D/A) ===
 const modeButtons = Array.from(document.querySelectorAll('.mode-btn'));
 
@@ -370,7 +454,6 @@ function setMode(newMode) {
     btn.setAttribute('aria-pressed', String(isActive));
   });
 
-  // если мы в fullscreen и там уже применены inline-стили — обновим подсветку активной кнопки
   if (!!getFullscreenElement()) applyDarkTheme();
 }
 
@@ -511,10 +594,7 @@ resize();
 
 // === ОБЩИЙ РЕНДЕР ===
 function toScreen(x, y) {
-  return {
-    x: x * scale + offsetX,
-    y: y * scale + offsetY
-  };
+  return { x: x * scale + offsetX, y: y * scale + offsetY };
 }
 function getColor(darkColor, lightColor) {
   return darkColor;
@@ -563,11 +643,7 @@ function drawMark(px, py, dirX, dirY, length, darkColor, lightColor, width, styl
   const d2 = toScreen(px - dirX * length/2, py - dirY * length/2);
   ctx.strokeStyle = getColor(darkColor, lightColor);
   ctx.lineWidth = width;
-  if (style === "dashed") {
-    ctx.setLineDash([3, 2]);
-  } else {
-    ctx.setLineDash([]);
-  }
+  if (style === "dashed") ctx.setLineDash([3, 2]); else ctx.setLineDash([]);
   ctx.beginPath();
   ctx.moveTo(d2.x, d2.y);
   ctx.lineTo(d.x, d.y);
@@ -598,7 +674,7 @@ function drawOriginalDiagram() {
   const cosA = Math.cos(angle);
   const sinA = Math.sin(angle);
   const extent = lineSpacing * 10;
-  
+
   drawLine(-extent, cy, extent, cy, "#0ff", "#08f", 1);
   const ctX0 = cx - sinA * extent;
   const ctY0 = cy - cosA * extent;
@@ -610,6 +686,7 @@ function drawOriginalDiagram() {
   const xY1 = cy - sinA * extent;
   drawLine(ctX0, ctY0, ctX1, ctY1, "#0ff", "#08f", 1);
   drawLine(xX0, xY0, xX1, xY1, "#888", "#666", 1);
+
   const ctDirX = ctX1 - ctX0;
   const ctDirY = ctY1 - ctY0;
   const ctLength = Math.sqrt(ctDirX*ctDirX + ctDirY*ctDirY);
@@ -617,6 +694,7 @@ function drawOriginalDiagram() {
   const ctUnitY = ctDirY / ctLength;
   const ctPerpX = -ctUnitY;
   const ctPerpY = ctUnitX;
+
   const xDirX = xX1 - xX0;
   const xDirY = xY1 - xY0;
   const xLength = Math.sqrt(xDirX*xDirX + xDirY*xDirY);
@@ -624,89 +702,63 @@ function drawOriginalDiagram() {
   const xUnitY = xDirY / xLength;
   const xPerpX = -xUnitY;
   const xPerpY = xUnitX;
-  
+
   for(let sec = 1; sec <= secondsPerSide; sec++) {
     const distance = sec * lineSpacing;
     const bigX1 = distance * ctUnitX;
     const bigY1 = distance * ctUnitY;
     drawMark(bigX1, bigY1, ctPerpX, ctPerpY, 14, "#0ff", "#08f", 1.5);
-    if (scale > 0.5) {
-      drawText((-sec).toString(), bigX1 + ctPerpX * 15, bigY1 + ctPerpY * 15, "#0ff", "#08f", 10);
-    }
+    if (scale > 0.5) drawText((-sec).toString(), bigX1 + ctPerpX * 15, bigY1 + ctPerpY * 15, "#0ff", "#08f", 10);
+
     const bigX2 = -distance * ctUnitX;
     const bigY2 = -distance * ctUnitY;
     drawMark(bigX2, bigY2, ctPerpX, ctPerpY, 14, "#0ff", "#08f", 1.5);
-    if (scale > 0.5) {
-      drawText(sec.toString(), bigX2 - ctPerpX * 15, bigY2 - ctPerpY * 15, "#0ff", "#08f", 10);
-    }
+    if (scale > 0.5) drawText(sec.toString(), bigX2 - ctPerpX * 15, bigY2 - ctPerpY * 15, "#0ff", "#08f", 10);
+
     const halfDistance = distance - halfSpacing;
-    const halfX1 = halfDistance * ctUnitX;
-    const halfY1 = halfDistance * ctUnitY;
-    drawMark(halfX1, halfY1, ctPerpX, ctPerpY, 10, "#0aa", "#06a", 1.0, "dashed");
-    const halfX2 = -halfDistance * ctUnitX;
-    const halfY2 = -halfDistance * ctUnitY;
-    drawMark(halfX2, halfY2, ctPerpX, ctPerpY, 10, "#0aa", "#06a", 1.0, "dashed");
+    drawMark(halfDistance * ctUnitX, halfDistance * ctUnitY, ctPerpX, ctPerpY, 10, "#0aa", "#06a", 1.0, "dashed");
+    drawMark(-halfDistance * ctUnitX, -halfDistance * ctUnitY, ctPerpX, ctPerpY, 10, "#0aa", "#06a", 1.0, "dashed");
   }
-  
+
   if (scale > 0.7) {
     const smallMarksPerSide = secondsPerSide * 10;
     for(let tenth = 1; tenth <= smallMarksPerSide; tenth++) {
       if (tenth % 5 === 0) continue;
       const distance = tenth * smallSpacing;
-      const smallX1 = distance * ctUnitX;
-      const smallY1 = distance * ctUnitY;
-      drawPoint(smallX1, smallY1, 2, "#099", "#057");
-      const smallX2 = -distance * ctUnitX;
-      const smallY2 = -distance * ctUnitY;
-      drawPoint(smallX2, smallY2, 2, "#099", "#057");
+      drawPoint(distance * ctUnitX, distance * ctUnitY, 2, "#099", "#057");
+      drawPoint(-distance * ctUnitX, -distance * ctUnitY, 2, "#099", "#057");
     }
   }
 
-  for(let i = -10; i <= 10; i++){ 
-    const t = i / 10; 
-    const px = xX0 + (xX1 - xX0) * (0.5 + t/2); 
+  for(let i = -10; i <= 10; i++){
+    const t = i / 10;
+    const px = xX0 + (xX1 - xX0) * (0.5 + t/2);
     const py = xY0 + (xY1 - xY0) * (0.5 + t/2);
     drawLine(px, py - extent, px, py + extent, "#888", "#666", 1);
-    
+
     for(let sec = 1; sec <= secondsPerSide; sec++) {
       const distance = sec * lineSpacing;
-      const upX = px;
-      const upY = py - distance;
-      drawMark(upX, upY, 1, 0, 12, "#888", "#666", 1.5);
-      if (scale > 0.5) {
-        drawText(sec.toString(), upX - 8, upY, "#888", "#666", 10, "right");
-      }
-      const downX = px;
-      const downY = py + distance;
-      drawMark(downX, downY, 1, 0, 12, "#888", "#666", 1.5);
-      if (scale > 0.5) {
-        drawText((-sec).toString(), downX + 8, downY, "#888", "#666", 10, "left");
-      }
+      drawMark(px, py - distance, 1, 0, 12, "#888", "#666", 1.5);
+      if (scale > 0.5) drawText(sec.toString(), px - 8, py - distance, "#888", "#666", 10, "right");
+
+      drawMark(px, py + distance, 1, 0, 12, "#888", "#666", 1.5);
+      if (scale > 0.5) drawText((-sec).toString(), px + 8, py + distance, "#888", "#666", 10, "left");
+
       const halfDistance = distance - halfSpacing;
-      const halfUpX = px;
-      const halfUpY = py - halfDistance;
-      drawMark(halfUpX, halfUpY, 1, 0, 9, "#888", "#666", 1.0, "dashed");
-      const halfDownX = px;
-      const halfDownY = py + halfDistance;
-      drawMark(halfDownX, halfDownY, 1, 0, 9, "#888", "#666", 1.0, "dashed");
+      drawMark(px, py - halfDistance, 1, 0, 9, "#888", "#666", 1.0, "dashed");
+      drawMark(px, py + halfDistance, 1, 0, 9, "#888", "#666", 1.0, "dashed");
     }
-    
+
     if (scale > 0.7) {
       for(let tenth = 1; tenth <= secondsPerSide * 10; tenth++) {
         if (tenth % 5 === 0) continue;
         const distance = tenth * smallSpacing;
-        const upX = px;
-        const upY = py - distance;
-        drawPoint(upX, upY, 1.5, "#888", "#666");
-        const downX = px;
-        const downY = py + distance;
-        drawPoint(downX, downY, 1.5, "#888", "#666");
+        drawPoint(px, py - distance, 1.5, "#888", "#666");
+        drawPoint(px, py + distance, 1.5, "#888", "#666");
       }
     }
-    
-    if (scale > 0.7 && i !== 0) {
-      drawText(i.toString(), px, py + 20, "#888", "#666", 10);
-    }
+
+    if (scale > 0.7 && i !== 0) drawText(i.toString(), px, py + 20, "#888", "#666", 10);
   }
 
   drawPoint(0, 0, 2, "#fff", "#fff");
@@ -719,15 +771,15 @@ function drawMinkowskiDiagram() {
   drawLine(0, -extent, 0, extent, "#0ff", "#08f", 0.8);
   drawDashedLine(-extent, -extent, extent, extent, "#ff0", "#880", 0.6, [4, 4]);
   drawDashedLine(-extent, extent, extent, -extent, "#ff0", "#880", 0.6, [4, 4]);
+
   const gridStep = lineSpacing;
-  
   for (let i = -Math.floor(extent/gridStep); i <= Math.floor(extent/gridStep); i++) {
     if (i === 0) continue;
     const x = i * gridStep;
     drawDashedLine(x, -extent, x, extent, "#044", "#06a", 0.4, [3, 5]);
     drawDashedLine(-extent, x, extent, x, "#044", "#06a", 0.4, [3, 5]);
   }
-  
+
   const beta = Math.sin(angle);
   const visBetaLimit = 0.999;
   let visBeta = beta;
@@ -737,71 +789,68 @@ function drawMinkowskiDiagram() {
     const limitedBeta = 0.707 + (visBetaLimit - 0.707) * t;
     visBeta = Math.min(absBeta, limitedBeta) * Math.sign(beta);
   }
-  
+
   const visGamma = 1 / Math.sqrt(1 - visBeta * visBeta);
   const maxGamma = 50;
   const drawGamma = Math.min(visGamma, maxGamma);
   const drawBeta = Math.sqrt(1 - 1/(drawGamma * drawGamma)) * Math.sign(visBeta);
+
   const drawCtPrimeX = drawBeta * drawGamma;
   const drawCtPrimeY = drawGamma;
   const drawXPrimeX = drawGamma;
   const drawXPrimeY = drawBeta * drawGamma;
-  
+
   drawLine(-drawCtPrimeX * extent, -drawCtPrimeY * extent, drawCtPrimeX * extent, drawCtPrimeY * extent, "#888", "#666", 1.5);
   drawLine(-drawXPrimeX * extent, -drawXPrimeY * extent, drawXPrimeX * extent, drawXPrimeY * extent, "#888", "#666", 1.5);
-  
+
   for (let i = -Math.floor(extent/gridStep); i <= Math.floor(extent/gridStep); i++) {
     const offset = i * gridStep;
+
     const x1 = -drawXPrimeX * extent + drawCtPrimeX * offset;
     const y1 = -drawXPrimeY * extent + drawCtPrimeY * offset;
-    const x2 = drawXPrimeX * extent + drawCtPrimeX * offset;
-    const y2 = drawXPrimeY * extent + drawCtPrimeY * offset;
+    const x2 =  drawXPrimeX * extent + drawCtPrimeX * offset;
+    const y2 =  drawXPrimeY * extent + drawCtPrimeY * offset;
+
     const p1 = toScreen(x1, y1);
     const p2 = toScreen(x2, y2);
+
     ctx.strokeStyle = "#888";
     ctx.lineWidth = 0.7;
     const slope = Math.abs((y2 - y1) / (x2 - x1));
     const angleDiff = Math.abs(Math.atan(slope) - Math.PI/4);
-    if (angleDiff < 0.05 && Math.abs(visBeta) > 0.7) {
-      ctx.setLineDash([2, 4]);
-    } else {
-      ctx.setLineDash([4, 4]);
-    }
+    if (angleDiff < 0.05 && Math.abs(visBeta) > 0.7) ctx.setLineDash([2, 4]);
+    else ctx.setLineDash([4, 4]);
     ctx.beginPath();
     ctx.moveTo(p1.x, p1.y);
     ctx.lineTo(p2.x, p2.y);
     ctx.stroke();
     ctx.setLineDash([]);
-    
+
     const x3 = -drawCtPrimeX * extent + drawXPrimeX * offset;
     const y3 = -drawCtPrimeY * extent + drawXPrimeY * offset;
-    const x4 = drawCtPrimeX * extent + drawXPrimeX * offset;
-    const y4 = drawCtPrimeY * extent + drawXPrimeY * offset;
+    const x4 =  drawCtPrimeX * extent + drawXPrimeX * offset;
+    const y4 =  drawCtPrimeY * extent + drawXPrimeY * offset;
+
     const p3 = toScreen(x3, y3);
     const p4 = toScreen(x4, y4);
+
     ctx.strokeStyle = "#888";
     ctx.lineWidth = 0.7;
     const slope2 = Math.abs((y4 - y3) / (x4 - x3));
     const angleDiff2 = Math.abs(Math.atan(slope2) - Math.PI/4);
-    if (angleDiff2 < 0.05 && Math.abs(visBeta) > 0.7) {
-      ctx.setLineDash([2, 4]);
-    } else {
-      ctx.setLineDash([4, 4]);
-    }
+    if (angleDiff2 < 0.05 && Math.abs(visBeta) > 0.7) ctx.setLineDash([2, 4]);
+    else ctx.setLineDash([4, 4]);
     ctx.beginPath();
     ctx.moveTo(p3.x, p3.y);
     ctx.lineTo(p4.x, p4.y);
     ctx.stroke();
     ctx.setLineDash([]);
   }
-  
+
   drawPoint(0, 0, 2, "#fff", "#fff");
 }
 
 // === PENROSE (P) — Minkowski 1+1 (интерактивный буст) ===
-
-// Проекция через null-координаты u=t-x, v=t+x:
-// U=atan(u), V=atan(v), затем T=(U+V)/2, X=(V-U)/2
 function penroseFromUV(u, v, extent) {
   const U = Math.atan(u);
   const V = Math.atan(v);
@@ -813,8 +862,6 @@ function penroseFromUV(u, v, extent) {
 function penroseFromTX(t, x, extent) {
   return penroseFromUV(t - x, t + x, extent);
 }
-// Линии "штрих" (primed): используем буст в null-координатах
-// u' = e^{-η} u, v' = e^{η} v  =>  u = e^{η} u', v = e^{-η} v'
 function penroseFromPrimedTX(tP, xP, extent, eta) {
   const uP = tP - xP;
   const vP = tP + xP;
@@ -832,27 +879,22 @@ function drawPenroseDiagram() {
   const extent = lineSpacing * 8;
   const L = extent * 0.98;
 
-  // РАМКА (границы под 45°)
   drawLine(0, -L,  L, 0, "#ff0", "#880", 1.2);
   drawLine( L, 0,  0, L, "#ff0", "#880", 1.2);
   drawLine(0,  L, -L, 0, "#ff0", "#880", 1.2);
   drawLine(-L, 0,  0,-L, "#ff0", "#880", 1.2);
 
-  // Оси (нештрихованные) t, x (в конформных координатах это прямые)
   drawLine(-L, 0, L, 0, "#0ff", "#08f", 0.9);
   drawLine(0, -L, 0, L, "#0ff", "#08f", 0.9);
 
-  // Световые направления из центра: T=±X до границы (точки на ℐ)
   drawDashedLine(0, 0,  L/2,  L/2, "#ff0", "#880", 0.8, [6,4]);
   drawDashedLine(0, 0, -L/2,  L/2, "#ff0", "#880", 0.8, [6,4]);
   drawDashedLine(0, 0,  L/2, -L/2, "#ff0", "#880", 0.8, [6,4]);
   drawDashedLine(0, 0, -L/2, -L/2, "#ff0", "#880", 0.8, [6,4]);
 
-  // Подписи осей
   drawText("t", 0,  L*1.06, "#0ff", "#0ff", 11);
   drawText("x", L*1.06, 0, "#0ff", "#0ff", 11);
 
-  // Подписи бесконечностей
   drawText("i⁺",  0,  L*0.93, "#fff", "#fff", 11);
   drawText("i⁻",  0, -L*0.93, "#fff", "#fff", 11);
   drawText("i⁰",  L*0.92, 0, "#fff", "#fff", 11);
@@ -863,12 +905,10 @@ function drawPenroseDiagram() {
   drawText("𝓘⁻",  L*0.62, -L*0.32, "#fff", "#fff", 11);
   drawText("𝓘⁻", -L*0.62, -L*0.32, "#fff", "#fff", 11);
 
-  // Сетка (нештрихованная): t=const и x=const (в Минковском → кривые)
   const gridStep = lineSpacing;
   const maxTX = lineSpacing * 12;
   const samples = 90;
 
-  // t = const
   for (let ti = -Math.floor(maxTX / gridStep); ti <= Math.floor(maxTX / gridStep); ti++) {
     const t0 = ti * gridStep;
     if (Math.abs(t0) < 1e-9) continue;
@@ -876,13 +916,11 @@ function drawPenroseDiagram() {
     for (let k = 0; k <= samples; k++) {
       const x = -maxTX + 2 * maxTX * (k / samples);
       const p = penroseFromTX(t0, x, extent);
-      // небольшая фильтрация: оставляем точки внутри ромба (с запасом)
       if (Math.abs(p.x) + Math.abs(p.y) <= L * 1.01) pts.push(p);
     }
     drawCurve(pts, "#044", 0.7, [3,4]);
   }
 
-  // x = const
   for (let xi = -Math.floor(maxTX / gridStep); xi <= Math.floor(maxTX / gridStep); xi++) {
     const x0 = xi * gridStep;
     if (Math.abs(x0) < 1e-9) continue;
@@ -895,17 +933,14 @@ function drawPenroseDiagram() {
     drawCurve(pts, "#044", 0.7, [3,4]);
   }
 
-  // Интерактивность: буст по beta=sin(angle) -> rapidity η
   const beta = Math.sin(angle);
   const absBeta = Math.abs(beta);
   const eta = rapidityFromBeta(beta);
 
-  // Штрихованные оси и сетка: рисуем только если буст заметный
   if (absBeta > 1e-4) {
     ctx.save();
     ctx.globalAlpha = 0.95;
 
-    // Сетка t' = const
     for (let ti = -Math.floor(maxTX / gridStep); ti <= Math.floor(maxTX / gridStep); ti++) {
       const tP = ti * gridStep;
       if (Math.abs(tP) < 1e-9) continue;
@@ -918,7 +953,6 @@ function drawPenroseDiagram() {
       drawCurve(pts, "#666", 0.65, [5,5]);
     }
 
-    // Сетка x' = const
     for (let xi = -Math.floor(maxTX / gridStep); xi <= Math.floor(maxTX / gridStep); xi++) {
       const xP = xi * gridStep;
       if (Math.abs(xP) < 1e-9) continue;
@@ -931,7 +965,6 @@ function drawPenroseDiagram() {
       drawCurve(pts, "#666", 0.65, [5,5]);
     }
 
-    // Оси t' (x'=0) и x' (t'=0) — толще
     {
       const ptsT = [];
       for (let k = 0; k <= samples; k++) {
@@ -951,7 +984,6 @@ function drawPenroseDiagram() {
       drawCurve(ptsX, "#aaa", 1.6);
     }
 
-    // Подписи t' и x' около положительных направлений
     {
       const pT = penroseFromPrimedTX(maxTX * 0.75, 0, extent, eta);
       const pX = penroseFromPrimedTX(0, maxTX * 0.75, extent, eta);
@@ -963,7 +995,6 @@ function drawPenroseDiagram() {
     ctx.restore();
   }
 
-  // Пример: мировая линия наблюдателя x=0 (зелёная)
   {
     const pts = [];
     for (let k = 0; k <= samples; k++) {
@@ -978,70 +1009,55 @@ function drawPenroseDiagram() {
   drawText("Penrose (Minkowski 1+1 compactification)", 0, -L*1.08, "#0ff", "#0ff", 11);
 }
 
-// === ДИСК ПУАНКАРЕ (D) — H², пространство скоростей ===
-function drawPoincareDisk() {
-  const extent = lineSpacing * 8;
-  const R = extent * 0.9;
+// === D (ДИСК) — по твоему ТЗ ===
+function drawDiskCustom() {
+  const extent = getDiskExtent();     // как у M/E
+  const R = getDiskRadius();          // радиус диска
+  const cx = 0, cy = 0;
 
-  const c = toScreen(0, 0);
-  ctx.strokeStyle = "#0ff";
-  ctx.lineWidth = 1.5;
+  // 1) Желтая окружность
+  const c = toScreen(cx, cy);
+  ctx.strokeStyle = "#ff0";
+  ctx.lineWidth = 2.0;
   ctx.setLineDash([]);
   ctx.beginPath();
   ctx.arc(c.x, c.y, R * scale, 0, 2*Math.PI);
   ctx.stroke();
 
-  const nDiam = 8;
-  for (let i = 0; i < nDiam; i++) {
-    const phi = i * Math.PI / nDiam;
-    const x = R * Math.cos(phi);
-    const y = R * Math.sin(phi);
-    drawLine(-x, -y, x, y, "#044", "#0aa", 0.7);
-  }
-
-  const nCircles = 4;
-  for (let i = 1; i <= nCircles; i++) {
-    const r = R * i / (nCircles + 1);
-    ctx.strokeStyle = "#033";
-    ctx.lineWidth = 0.6;
-    ctx.setLineDash([4,4]);
-    ctx.beginPath();
-    ctx.arc(c.x, c.y, r * scale, 0, 2*Math.PI);
-    ctx.stroke();
-    ctx.setLineDash([]);
-  }
-
-  function drawGeodesicCircle(x0, y0, rad) {
-    const points = [];
-    const N = 80;
-    for (let i = 0; i <= N; i++) {
-      const th = Math.PI * i / N;
-      const x = x0 + rad * Math.cos(th);
-      const y = y0 + rad * Math.sin(th);
-      const r = Math.sqrt(x*x + y*y);
-      if (r <= R*1.001) {
-        points.push({ x, y });
-      }
-    }
-    drawCurve(points, "#0f0", 1.0);
-  }
-  drawGeodesicCircle(0, -R*0.5, R*0.5);
-  drawGeodesicCircle(0, -R*0.7, R*0.7);
-
-  const beta = Math.sin(angle);
-  const absBeta = Math.abs(beta);
-  if (absBeta > 0) {
-    const eta = 0.5 * Math.log((1 + absBeta) / (1 - absBeta)); // artanh(|v|)
-    const rHyper = Math.tanh(eta / 2);
-    const rWorld = rHyper * R;
-    const sign = beta >= 0 ? 1 : -1;
-    const x = rWorld * sign;
-    const y = 0;
-    drawPoint(x, y, 3, "#f80", "#f44");
-  }
-
+  // Центр (не просили, но полезно)
   drawPoint(0, 0, 2, "#fff", "#fff");
-  drawText("Poincaré disk (H² / velocities)", 0, -R*1.2, "#0ff", "#0ff", 11);
+
+  // 2) Красный перемещаемый источник
+  const sx = diskSourceX;
+  const sy = diskSourceY;
+  drawPoint(sx, sy, 4, "#f00", "#f00");
+
+  // 3) От него идёт вертикальный отрезок до границы окружности (голубой)
+  // Берём верхнюю точку пересечения вертикали x=sx с окружностью: yTop = -sqrt(R^2 - sx^2)
+  const radV = Math.max(0, R*R - sx*sx);
+  const yTop = -Math.sqrt(radV);
+
+  // Голубой вертикальный отрезок от источника до верхней границы
+  drawLine(sx, sy, sx, yTop, "#0ff", "#0ff", 2.2);
+
+  // 4) От центра окружности — гипотенуза до касания голубого отрезка с окружностью
+  // (точка касания = (sx, yTop))
+  drawLine(0, 0, sx, yTop, "#fff", "#fff", 1.8);
+
+  // 5) Два отрезка от источника до "передней" и "задней" границы окружности
+  // Интерпретация: передняя/задняя по горизонтали (вправо/влево) из источника.
+  const radH = Math.max(0, R*R - sy*sy);
+  const xRight = Math.sqrt(radH);
+  const xLeft  = -xRight;
+
+  // До передней (вправо) — синий
+  drawLine(sx, sy, xRight, sy, "#08f", "#08f", 2.6);
+
+  // До задней (влево) — красный
+  drawLine(sx, sy, xLeft, sy, "#f00", "#f00", 2.6);
+
+  // Подпись (не обязательна)
+  // drawText("Drag the red source", 0, -R*1.15, "#ff0", "#ff0", 11);
 }
 
 // === AdS/CFT (A) — Poincaré-полу-пространство ===
@@ -1102,7 +1118,7 @@ function drawAdSDiagram() {
 // === ГЛАВНЫЙ ЦИКЛ ===
 function animate() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  
+
   if (mode === 'E') {
     drawOriginalDiagram();
   } else if (mode === 'M') {
@@ -1110,11 +1126,11 @@ function animate() {
   } else if (mode === 'P') {
     drawPenroseDiagram();
   } else if (mode === 'D') {
-    drawPoincareDisk();
+    drawDiskCustom();
   } else if (mode === 'A') {
     drawAdSDiagram();
   }
-  
+
   requestAnimationFrame(animate);
 }
 
