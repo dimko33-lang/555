@@ -1,1 +1,1445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SR / Penrose / Disk / Mercedes</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<style>
+  :root { color-scheme: dark !important; }
+  html, body { background-color: #000833 !important; color: white !important; }
+</style>
+<style>
+  body {
+    margin:0;
+    background:#000833 !important;
+    overflow:hidden;
+    touch-action: none;
+    font-family: Arial, sans-serif;
+    color: white !important;
+  }
+  canvas {
+    display:block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 1;
+  }
+  .controls {
+    position: fixed;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    gap: 2px;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    max-width: none;
+    z-index: 100;
+  }
+  .btn {
+    min-width: 35px;
+    height: 35px;
+    border-radius: 5px;
+    background: rgba(0, 8, 51, 0.7) !important;
+    border: 1px solid rgba(255,255,255,0.3) !important;
+    color: white !important;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+    transition: background 0.2s;
+    flex-shrink: 0;
+    padding: 0 6px;
+  }
+  .btn:hover { background: rgba(0, 20, 80, 0.8) !important; }
+  .btn:active { background: rgba(0, 30, 100, 0.9) !important; }
 
+  .mode-btn{
+    min-width: 26px;
+    padding: 0;
+    font-size: 13px;
+  }
+  .btn.active{
+    background: rgba(0, 40, 140, 0.55) !important;
+    border-color: rgba(0, 255, 255, 0.6) !important;
+  }
+
+  .info-panel {
+    position: fixed;
+    top: 8px;
+    left: 8px;
+    background: rgba(0, 8, 51, 0.7) !important;
+    color: white !important;
+    padding: 0 8px;
+    border-radius: 5px;
+    font-size: 11px;
+    border: 1px solid rgba(255,255,255,0.2) !important;
+    min-width: 110px;
+    max-width: 130px;
+    width: 130px;
+    height: 40px;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    box-sizing: border-box;
+  }
+  .info-item {
+    margin: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    min-width: 0;
+  }
+  .info-label {
+    color: #aaa !important;
+    font-size: 9px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .info-value {
+    font-weight: bold;
+    font-family: 'Courier New', monospace;
+    white-space: nowrap;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-shrink: 1;
+  }
+  .speed-value { color: #fa0 !important; font-size: 10px; }
+  .gamma-value { color: #0ff !important; font-size: 10px; }
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+
+<div class="info-panel" id="infoPanel">
+  <div class="info-item">
+    <span class="info-label">Speed:</span>
+    <span class="info-value speed-value" id="speedValue">0.000c</span>
+  </div>
+  <div class="info-item">
+    <span class="info-label">γ:</span>
+    <span class="info-value gamma-value" id="gammaValue">1.000</span>
+  </div>
+</div>
+
+<div class="controls">
+  <button class="btn mode-btn" data-mode="E" title="Euclidean" aria-pressed="true">E</button>
+  <button class="btn mode-btn" data-mode="M" title="Minkowski" aria-pressed="false">M</button>
+  <button class="btn mode-btn" data-mode="P" title="Penrose" aria-pressed="false">P</button>
+  <button class="btn mode-btn" data-mode="D" title="Disk" aria-pressed="false">D</button>
+  <button class="btn mode-btn" data-mode="A" title="Mercedes / Pythagorean circles" aria-pressed="false">A</button>
+
+  <button class="btn" id="zoomReset" title="Reset scale">↻</button>
+  <button class="btn" id="fullscreen" title="Fullscreen mode">FS</button>
+</div>
+
+<script>
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+
+// Параметры визуализации
+let angle = 0;
+
+// Перетаскивание: либо вращаем (угол), либо двигаем источник в D
+let draggingAngle = false;
+let draggingSource = false;
+let lastX = 0;
+
+let scale = 0.3;
+let offsetX = 0, offsetY = 0;
+
+// РЕЖИМЫ:
+// E — евклидовый «наклон осей»
+// M — Минковский
+// P — Пенроуз (Minkowski 1+1)
+// D — Диск (кастомная геометрия)
+// A — Mercedes (пифагоровы окружности)
+const modes = ['E', 'M', 'P', 'D', 'A'];
+let modeIndex = 0;
+let mode = modes[modeIndex];
+
+// ПАРАМЕТРЫ ДИАГРАММЫ
+const numLines = 21;
+const secondsPerSide = 10;
+const vertLineLength = 3000;
+
+// TARGET GAMMA = 1,000,000
+const TARGET_GAMMA = 1000000.000;
+const TARGET_V = Math.sqrt(1 - 1/(TARGET_GAMMA * TARGET_GAMMA));
+const MAX_ANGLE = Math.asin(TARGET_V);
+
+// РАССТОЯНИЯ
+const lineSpacing = vertLineLength / (numLines - 1);
+const halfSpacing = lineSpacing / 2;
+const smallSpacing = lineSpacing / 10;
+
+// === D MODE: перемещаемый источник ===
+let diskSourceX = 0;
+let diskSourceY = 0; // движение только по горизонтали
+
+function getDiskExtent() {
+  return lineSpacing * 10;
+}
+function getDiskRadius() {
+  return getDiskExtent() * 0.9;
+}
+function screenToWorld(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  const sx = clientX - rect.left;
+  const sy = clientY - rect.top;
+  return { x: (sx - offsetX) / scale, y: (sy - offsetY) / scale };
+}
+function moveDiskSourceToClientX(clientX) {
+  const rect = canvas.getBoundingClientRect();
+  const sx = clientX - rect.left;
+  const worldX = (sx - offsetX) / scale;
+
+  const R = getDiskRadius();
+  const sy = diskSourceY;
+  const rad = Math.max(0, R*R - sy*sy);
+  const maxX = Math.sqrt(rad) * 0.999;
+  diskSourceX = Math.max(-maxX, Math.min(maxX, worldX));
+}
+
+// МУЛЬТИТАЧ
+let touchStartDistance = null;
+let touchStartAngle = null;
+let touchStartCenterX = 0;
+let touchStartCenterY = 0;
+let touchStartScale = 0.3;
+let touchStartAngleSystem = 0;
+let touchStartOffsetX = 0;
+let touchStartOffsetY = 0;
+let touchStartWorldX = 0;
+let touchStartWorldY = 0;
+
+// Fullscreen API
+function isFullscreenSupported() {
+  return !!(document.documentElement.requestFullscreen ||
+            document.documentElement.webkitRequestFullscreen ||
+            document.documentElement.mozRequestFullScreen ||
+            document.documentElement.msRequestFullscreen);
+}
+function getFullscreenElement() {
+  return document.fullscreenElement ||
+         document.webkitFullscreenElement ||
+         document.mozFullScreenElement ||
+         document.msFullscreenElement;
+}
+function requestFullscreen(element) {
+  if (element.requestFullscreen) return element.requestFullscreen();
+  if (element.webkitRequestFullscreen) return element.webkitRequestFullscreen();
+  if (element.mozRequestFullScreen) return element.mozRequestFullScreen();
+  if (element.msRequestFullscreen) return element.msRequestFullscreen();
+  return Promise.reject(new Error('Fullscreen API not supported'));
+}
+function exitFullscreen() {
+  if (document.exitFullscreen) return document.exitFullscreen();
+  if (document.webkitExitFullscreen) return document.webkitExitFullscreen();
+  if (document.mozCancelFullScreen) return document.mozCancelFullScreen();
+  if (document.msExitFullscreen) return document.msExitFullscreen();
+  return Promise.reject(new Error('Fullscreen API not supported'));
+}
+
+function applyDarkTheme() {
+  document.body.style.backgroundColor = '#000833';
+  document.body.style.color = 'white';
+
+  document.querySelectorAll('.btn').forEach(btn => {
+    const isActive = btn.classList.contains('active');
+    btn.style.backgroundColor = isActive ? 'rgba(0, 40, 140, 0.55)' : 'rgba(0, 8, 51, 0.7)';
+    btn.style.color = 'white';
+    btn.style.borderColor = isActive ? 'rgba(0, 255, 255, 0.6)' : 'rgba(255,255,255,0.3)';
+  });
+
+  const infoPanel = document.querySelector('.info-panel');
+  if (infoPanel) {
+    infoPanel.style.backgroundColor = 'rgba(0, 8, 51, 0.7)';
+    infoPanel.style.color = 'white';
+    infoPanel.style.borderColor = 'rgba(255,255,255,0.2)';
+  }
+}
+
+// Управление (тач/мышь)
+function getTouchDistance(touches) {
+  const dx = touches[0].clientX - touches[1].clientX;
+  const dy = touches[0].clientY - touches[1].clientY;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+function getTouchAngle(touches) {
+  const dx = touches[0].clientX - touches[1].clientX;
+  const dy = touches[0].clientY - touches[1].clientY;
+  return Math.atan2(dy, dx);
+}
+
+// === Кнопки режимов (E/M/P/D/A) ===
+const modeButtons = Array.from(document.querySelectorAll('.mode-btn'));
+
+function setMode(newMode) {
+  if (!modes.includes(newMode)) return;
+  mode = newMode;
+  modeIndex = modes.indexOf(newMode);
+
+  modeButtons.forEach(btn => {
+    const isActive = btn.dataset.mode === mode;
+    btn.classList.toggle('active', isActive);
+    btn.setAttribute('aria-pressed', String(isActive));
+  });
+
+  if (!!getFullscreenElement()) applyDarkTheme();
+}
+
+modeButtons.forEach(btn => {
+  btn.addEventListener('click', () => setMode(btn.dataset.mode));
+});
+
+// reset scale
+document.getElementById('zoomReset').addEventListener('click', () => {
+  fitToScreen();
+});
+
+// FULLSCREEN
+const fullscreenBtn = document.getElementById('fullscreen');
+if (isFullscreenSupported()) {
+  fullscreenBtn.style.display = 'flex';
+  function updateFullscreenButton() {
+    const isFullscreen = !!getFullscreenElement();
+    fullscreenBtn.textContent = 'FS';
+    fullscreenBtn.title = isFullscreen ? 'Exit fullscreen' : 'Fullscreen mode';
+  }
+
+  fullscreenBtn.addEventListener('click', () => {
+    const isFullscreen = !!getFullscreenElement();
+    if (!isFullscreen) {
+      requestFullscreen(document.documentElement).catch(err => {
+        console.log('Fullscreen error:', err);
+        fullscreenBtn.textContent = 'ERR';
+        setTimeout(() => updateFullscreenButton(), 1000);
+      });
+    } else {
+      exitFullscreen().catch(err => {
+        console.log('Exit fullscreen error:', err);
+      });
+    }
+  });
+
+  document.addEventListener('fullscreenchange', () => { updateFullscreenButton(); applyDarkTheme(); });
+  document.addEventListener('webkitfullscreenchange', () => { updateFullscreenButton(); applyDarkTheme(); });
+  document.addEventListener('mozfullscreenchange', () => { updateFullscreenButton(); applyDarkTheme(); });
+  document.addEventListener('MSFullscreenChange', () => { updateFullscreenButton(); applyDarkTheme(); });
+
+  updateFullscreenButton();
+} else {
+  fullscreenBtn.style.display = 'none';
+}
+
+// Инфо о скорости / γ
+function updateInfo() {
+  const velocity = Math.sin(angle);
+  let velocityStr;
+  if (Math.abs(velocity) < 0.0001) {
+    velocityStr = "0.000c";
+  } else {
+    const absV = Math.abs(velocity);
+    if (Math.abs(Math.abs(angle) - MAX_ANGLE) < 0.0000001) {
+      velocityStr = TARGET_V.toFixed(8) + "c";
+    } else if (absV > 0.999999) {
+      velocityStr = absV.toFixed(8) + "c";
+    } else if (absV > 0.999) {
+      velocityStr = absV.toFixed(6) + "c";
+    } else if (absV > 0.99) {
+      velocityStr = absV.toFixed(4) + "c";
+    } else {
+      velocityStr = absV.toFixed(3) + "c";
+    }
+    if (velocity < 0) velocityStr = "-" + velocityStr;
+  }
+
+  let gamma = 1;
+  const v = Math.abs(velocity);
+  if (v < 0.999999999999) gamma = 1 / Math.sqrt(1 - v * v);
+  else gamma = TARGET_GAMMA;
+
+  let gammaStr;
+  if (Math.abs(Math.abs(angle) - MAX_ANGLE) < 0.0000001) gammaStr = TARGET_GAMMA.toFixed(3);
+  else if (gamma >= 1000000) gammaStr = gamma.toExponential(2);
+  else if (gamma >= 1000) gammaStr = gamma.toFixed(1);
+  else gammaStr = gamma.toFixed(3);
+
+  document.getElementById('speedValue').textContent = velocityStr;
+  document.getElementById('gammaValue').textContent = gammaStr;
+
+  const speedValue = document.getElementById('speedValue');
+  const absV = Math.abs(velocity);
+  if (absV < 0.3) speedValue.style.color = '#0f0';
+  else if (absV < 0.7) speedValue.style.color = '#ff0';
+  else if (absV < 0.95) speedValue.style.color = '#f80';
+  else speedValue.style.color = '#f00';
+}
+
+function fitToScreen() {
+  const extent = lineSpacing * 10;
+  const diagramSize = extent * 2;
+  const canvasWidth = canvas.width;
+  const canvasHeight = canvas.height;
+  const padding = 40;
+  const availableWidth = canvasWidth - padding * 2;
+  const availableHeight = canvasHeight - padding * 2;
+  const scaleX = availableWidth / diagramSize;
+  const scaleY = availableHeight / diagramSize;
+  scale = Math.min(scaleX, scaleY);
+  offsetX = canvasWidth / 2;
+  offsetY = canvasHeight / 2;
+}
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  fitToScreen();
+}
+window.addEventListener("resize", resize);
+resize();
+
+// === ОБЩИЙ РЕНДЕР ===
+function toScreen(x, y) {
+  return { x: x * scale + offsetX, y: y * scale + offsetY };
+}
+function getColor(darkColor, lightColor) {
+  return darkColor;
+}
+function drawLine(x1, y1, x2, y2, darkColor, lightColor, width) {
+  const p1 = toScreen(x1, y1);
+  const p2 = toScreen(x2, y2);
+  ctx.strokeStyle = getColor(darkColor, lightColor);
+  ctx.lineWidth = width;
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(p1.x, p1.y);
+  ctx.lineTo(p2.x, p2.y);
+  ctx.stroke();
+}
+function drawDashedLine(x1, y1, x2, y2, darkColor, lightColor, width, dashPattern = [5, 5]) {
+  const p1 = toScreen(x1, y1);
+  const p2 = toScreen(x2, y2);
+  ctx.strokeStyle = getColor(darkColor, lightColor);
+  ctx.lineWidth = width;
+  ctx.setLineDash(dashPattern);
+  ctx.beginPath();
+  ctx.moveTo(p1.x, p1.y);
+  ctx.lineTo(p2.x, p2.y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+function drawCurve(points, color, width, dashPattern = null) {
+  if (!points.length) return;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.setLineDash(dashPattern || []);
+  const p0 = toScreen(points[0].x, points[0].y);
+  ctx.beginPath();
+  ctx.moveTo(p0.x, p0.y);
+  for (let i = 1; i < points.length; i++) {
+    const p = toScreen(points[i].x, points[i].y);
+    ctx.lineTo(p.x, p.y);
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+function drawMark(px, py, dirX, dirY, length, darkColor, lightColor, width, style = "solid") {
+  const p = toScreen(px, py);
+  const d = toScreen(px + dirX * length/2, py + dirY * length/2);
+  const d2 = toScreen(px - dirX * length/2, py - dirY * length/2);
+  ctx.strokeStyle = getColor(darkColor, lightColor);
+  ctx.lineWidth = width;
+  if (style === "dashed") ctx.setLineDash([3, 2]); else ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(d2.x, d2.y);
+  ctx.lineTo(d.x, d.y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+function drawPoint(px, py, radius, darkColor, lightColor) {
+  const p = toScreen(px, py);
+  ctx.fillStyle = getColor(darkColor, lightColor);
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+  ctx.fill();
+}
+function drawText(text, px, py, darkColor, lightColor, fontSize = 10, align = "center") {
+  if (scale < 0.25) return;
+  const p = toScreen(px, py);
+  ctx.font = `${fontSize}px Arial`;
+  ctx.fillStyle = getColor(darkColor, lightColor);
+  ctx.textAlign = align;
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, p.x, p.y);
+}
+
+// =====================================================
+// === MODE A: "Mercedes / Pythagorean circles" scene ===
+// =====================================================
+function createMercedesState() {
+  const TAU = Math.PI * 2;
+  const EPS = 1e-9;
+
+  // Визуальные настройки
+  const CIRCLE_COLOR = "#0af";
+  const RAY_COLOR    = "#f44";
+
+  const CIRCLE_ALPHA = 0.70;   // круги заметнее
+  const RAY_ALPHA    = 0.38;   // лучи и треугольник чуть менее заметные
+  const CENTER_ALPHA = 0.45;
+  const MOVING_ALPHA = 0.65;
+
+  const LW_CIRCLE = 1.6;       // px, одинаково для всех кругов
+  const LW_RAY    = 1.0;       // px
+
+  // Точки в px, не зависят от масштаба (scale)
+  const VERTEX_R  = 8;         // белые точки крупнее
+  const MOVING_R  = 2;         // синяя точка сильно меньше белых
+  const CENTER_R  = 1;         // центры кругов маленькие
+
+  // Геометрия в мировых координатах
+  const BASE_R = lineSpacing * 8;
+
+  const S = {
+    points: [],
+    circles: [],
+    active: 0,
+    angles: [0,0,0],
+
+    draggingPoint: false,
+    draggingVertex: -1,
+    down: null,
+    moved: false,
+
+    initDone: false
+  };
+
+  function pythCircle(A, B, C) {
+    // |PA|^2 + |PB|^2 = |PC|^2
+    const D = 2 * (C.x - A.x - B.x);
+    const E = 2 * (C.y - A.y - B.y);
+    const F =
+      A.x*A.x + A.y*A.y +
+      B.x*B.x + B.y*B.y -
+      C.x*C.x - C.y*C.y;
+
+    const cx = -D / 2;
+    const cy = -E / 2;
+    const r2 = cx*cx + cy*cy - F;
+
+    const r = (r2 > EPS) ? Math.sqrt(r2) : 0;
+    return { x: cx, y: cy, r2, r };
+  }
+
+  function buildCircles() {
+    S.circles = [
+      { c: pythCircle(S.points[0], S.points[1], S.points[2]), right: 2 },
+      { c: pythCircle(S.points[0], S.points[2], S.points[1]), right: 1 },
+      { c: pythCircle(S.points[1], S.points[2], S.points[0]), right: 0 }
+    ];
+  }
+
+  function normAng(a) {
+    a %= TAU;
+    if (a < 0) a += TAU;
+    return a;
+  }
+
+  function currentPointWorld() {
+    const o = S.circles[S.active].c;
+    const a = S.angles[S.active];
+    return { x: o.x + o.r * Math.cos(a), y: o.y + o.r * Math.sin(a) };
+  }
+
+  // Если активный круг "исчез" (r2 < 0), перекидываем фокус на другой существующий
+  function ensureActiveCircle(prefWorld) {
+    if (S.circles[S.active].c.r2 >= -EPS) return;
+
+    let bestI = -1;
+    let bestD = Infinity;
+
+    for (let i = 0; i < S.circles.length; i++) {
+      const ci = S.circles[i].c;
+      if (ci.r2 < -EPS) continue;
+
+      const d = Math.abs(Math.hypot(prefWorld.x - ci.x, prefWorld.y - ci.y) - ci.r);
+      if (d < bestD) { bestD = d; bestI = i; }
+    }
+
+    if (bestI !== -1) {
+      S.active = bestI;
+      const o = S.circles[S.active].c;
+      S.angles[S.active] = normAng(Math.atan2(prefWorld.y - o.y, prefWorld.x - o.x));
+    }
+  }
+
+  function clientToCanvas(clientX, clientY) {
+    const rect = canvas.getBoundingClientRect();
+    return { x: clientX - rect.left, y: clientY - rect.top };
+  }
+
+  function hitTestVertex(clientX, clientY) {
+    const m = clientToCanvas(clientX, clientY);
+    const thr = 18;
+    for (let i = 0; i < S.points.length; i++) {
+      const p = toScreen(S.points[i].x, S.points[i].y);
+      const dx = m.x - p.x, dy = m.y - p.y;
+      if (dx*dx + dy*dy <= thr*thr) return i;
+    }
+    return -1;
+  }
+
+  function hitTestMovingPoint(clientX, clientY) {
+    const m = clientToCanvas(clientX, clientY);
+    const Pw = currentPointWorld();
+    const p = toScreen(Pw.x, Pw.y);
+    const dx = m.x - p.x, dy = m.y - p.y;
+    return (dx*dx + dy*dy) <= (18*18);
+  }
+
+  function pickCircleNearPointer(clientX, clientY) {
+    const w = screenToWorld(clientX, clientY);
+    const thrPx = 18;
+    const thrW = thrPx / scale;
+
+    let bestI = -1;
+    let bestD = Infinity;
+
+    for (let i = 0; i < S.circles.length; i++) {
+      const c = S.circles[i].c;
+      if (c.r2 < -EPS) continue;
+
+      const d = Math.abs(Math.hypot(w.x - c.x, w.y - c.y) - c.r);
+      if (d < bestD) { bestD = d; bestI = i; }
+    }
+    return (bestD <= thrW) ? bestI : -1;
+  }
+
+  function updateAngleFromClient(clientX, clientY) {
+    const w = screenToWorld(clientX, clientY);
+    const o = S.circles[S.active].c;
+    S.angles[S.active] = normAng(Math.atan2(w.y - o.y, w.x - o.x));
+  }
+
+  function drawCircleWorld(cx, cy, r, color, widthPx, alpha) {
+    const pc = toScreen(cx, cy);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = widthPx;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.arc(pc.x, pc.y, r * scale, 0, TAU);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawLineWorld(x1,y1,x2,y2,color,widthPx,alpha) {
+    const p1 = toScreen(x1,y1);
+    const p2 = toScreen(x2,y2);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = widthPx;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(p1.x,p1.y);
+    ctx.lineTo(p2.x,p2.y);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawTriangleDemo(Pw) {
+    const L = S.points.map(p => Math.hypot(p.x - Pw.x, p.y - Pw.y));
+    const hyp = S.circles[S.active].right;
+    const legs = [0,1,2].filter(i => i !== hyp);
+
+    const a = L[legs[0]];
+    const b = L[legs[1]];
+    if (!(a > 0) || !(b > 0)) return;
+
+    // фиксированное положение демо-треугольника около центроида
+    const G = {
+      x: (S.points[0].x + S.points[1].x + S.points[2].x) / 3,
+      y: (S.points[0].y + S.points[1].y + S.points[2].y) / 3
+    };
+    const A = { x: G.x - BASE_R * 0.25, y: G.y + BASE_R * 0.20 };
+    const B = { x: A.x + a, y: A.y };
+    const C = { x: A.x,     y: A.y - b };
+
+    drawLineWorld(A.x,A.y,B.x,B.y, RAY_COLOR, LW_RAY, RAY_ALPHA);
+    drawLineWorld(B.x,B.y,C.x,C.y, RAY_COLOR, LW_RAY, RAY_ALPHA);
+    drawLineWorld(C.x,C.y,A.x,A.y, RAY_COLOR, LW_RAY, RAY_ALPHA);
+  }
+
+  function initIfNeeded() {
+    if (S.initDone) return;
+    S.initDone = true;
+
+    // старт — равносторонний "мерседес"
+    S.points = [
+      { x: 0, y: -BASE_R },
+      { x: -BASE_R * Math.sin(Math.PI/3), y: BASE_R * Math.cos(Math.PI/3) },
+      { x:  BASE_R * Math.sin(Math.PI/3), y: BASE_R * Math.cos(Math.PI/3) }
+    ];
+
+    buildCircles();
+  }
+
+  return {
+    draw() {
+      initIfNeeded();
+
+      // круги (только существующие)
+      for (const o of S.circles) {
+        if (o.c.r2 > EPS) drawCircleWorld(o.c.x, o.c.y, o.c.r, CIRCLE_COLOR, LW_CIRCLE, CIRCLE_ALPHA);
+      }
+
+      // центры кругов — всегда (маленькие)
+      for (const o of S.circles) {
+        const p = toScreen(o.c.x, o.c.y);
+        ctx.save();
+        ctx.globalAlpha = CENTER_ALPHA;
+        ctx.fillStyle = CIRCLE_COLOR;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, CENTER_R, 0, TAU);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      const Pw = currentPointWorld();
+
+      // движущаяся точка
+      {
+        const p = toScreen(Pw.x, Pw.y);
+        ctx.save();
+        ctx.globalAlpha = MOVING_ALPHA;
+        ctx.fillStyle = CIRCLE_COLOR;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, MOVING_R, 0, TAU);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // лучи (красные)
+      for (const v of S.points) {
+        drawLineWorld(Pw.x, Pw.y, v.x, v.y, RAY_COLOR, LW_RAY, RAY_ALPHA);
+      }
+
+      // демо треугольник (тот же стиль)
+      drawTriangleDemo(Pw);
+
+      // белые вершины — главный акцент (фиксированный px размер)
+      for (const v of S.points) drawPoint(v.x, v.y, VERTEX_R, "#fff", "#fff");
+    },
+
+    onDown(clientX, clientY) {
+      initIfNeeded();
+      S.down = { x: clientX, y: clientY };
+      S.moved = false;
+
+      const vi = hitTestVertex(clientX, clientY);
+      if (vi !== -1) {
+        S.draggingVertex = vi;
+        S.draggingPoint = false;
+        return;
+      }
+
+      if (hitTestMovingPoint(clientX, clientY)) {
+        S.draggingPoint = true;
+        S.draggingVertex = -1;
+        updateAngleFromClient(clientX, clientY);
+        return;
+      }
+
+      const picked = pickCircleNearPointer(clientX, clientY);
+      if (picked !== -1) {
+        S.active = picked;
+        S.draggingPoint = true;
+        S.draggingVertex = -1;
+        updateAngleFromClient(clientX, clientY);
+        return;
+      }
+
+      S.draggingPoint = false;
+      S.draggingVertex = -1;
+    },
+
+    onMove(clientX, clientY) {
+      initIfNeeded();
+      if (!S.down) return;
+
+      const dx = clientX - S.down.x;
+      const dy = clientY - S.down.y;
+      if (dx*dx + dy*dy > 9) S.moved = true;
+
+      if (S.draggingVertex !== -1) {
+        const PwOld = currentPointWorld();
+        const w = screenToWorld(clientX, clientY);
+
+        S.points[S.draggingVertex].x = w.x;
+        S.points[S.draggingVertex].y = w.y;
+
+        buildCircles();
+        ensureActiveCircle(PwOld);
+
+        // держим угол согласованным со старой точкой
+        const o = S.circles[S.active].c;
+        S.angles[S.active] = normAng(Math.atan2(PwOld.y - o.y, PwOld.x - o.x));
+        return;
+      }
+
+      if (S.draggingPoint) updateAngleFromClient(clientX, clientY);
+    },
+
+    onUp() {
+      initIfNeeded();
+
+      // tap без движения — переключить круг (на существующий)
+      if (S.down && !S.moved && !S.draggingPoint && S.draggingVertex === -1) {
+        const Pw = currentPointWorld();
+        S.active = (S.active + 1) % 3;
+        ensureActiveCircle(Pw);
+      }
+
+      S.down = null;
+      S.moved = false;
+      S.draggingPoint = false;
+      S.draggingVertex = -1;
+    }
+  };
+}
+
+const mercedesA = createMercedesState();
+
+// === ЕВКЛИДОВАЯ (E) ===
+function drawOriginalDiagram() {
+  const cx = 0;
+  const cy = 0;
+  const cosA = Math.cos(angle);
+  const sinA = Math.sin(angle);
+  const extent = lineSpacing * 10;
+
+  drawLine(-extent, cy, extent, cy, "#0ff", "#08f", 1);
+  const ctX0 = cx - sinA * extent;
+  const ctY0 = cy - cosA * extent;
+  const ctX1 = cx + sinA * extent;
+  const ctY1 = cy + cosA * extent;
+  const xX0 = cx - cosA * extent;
+  const xY0 = cy + sinA * extent;
+  const xX1 = cx + cosA * extent;
+  const xY1 = cy - sinA * extent;
+  drawLine(ctX0, ctY0, ctX1, ctY1, "#0ff", "#08f", 1);
+  drawLine(xX0, xY0, xX1, xY1, "#888", "#666", 1);
+
+  const ctDirX = ctX1 - ctX0;
+  const ctDirY = ctY1 - ctY0;
+  const ctLength = Math.sqrt(ctDirX*ctDirX + ctDirY*ctDirY);
+  const ctUnitX = ctDirX / ctLength;
+  const ctUnitY = ctDirY / ctLength;
+  const ctPerpX = -ctUnitY;
+  const ctPerpY = ctUnitX;
+
+  const xDirX = xX1 - xX0;
+  const xDirY = xY1 - xY0;
+  const xLength = Math.sqrt(xDirX*xDirX + xDirY*xDirY);
+  const xUnitX = xDirX / xLength;
+  const xUnitY = xDirY / xLength;
+  const xPerpX = -xUnitY;
+  const xPerpY = xUnitX;
+
+  for(let sec = 1; sec <= secondsPerSide; sec++) {
+    const distance = sec * lineSpacing;
+    const bigX1 = distance * ctUnitX;
+    const bigY1 = distance * ctUnitY;
+    drawMark(bigX1, bigY1, ctPerpX, ctPerpY, 14, "#0ff", "#08f", 1.5);
+    if (scale > 0.5) drawText((-sec).toString(), bigX1 + ctPerpX * 15, bigY1 + ctPerpY * 15, "#0ff", "#08f", 10);
+
+    const bigX2 = -distance * ctUnitX;
+    const bigY2 = -distance * ctUnitY;
+    drawMark(bigX2, bigY2, ctPerpX, ctPerpY, 14, "#0ff", "#08f", 1.5);
+    if (scale > 0.5) drawText(sec.toString(), bigX2 - ctPerpX * 15, bigY2 - ctPerpY * 15, "#0ff", "#08f", 10);
+
+    const halfDistance = distance - halfSpacing;
+    drawMark(halfDistance * ctUnitX, halfDistance * ctUnitY, ctPerpX, ctPerpY, 10, "#0aa", "#06a", 1.0, "dashed");
+    drawMark(-halfDistance * ctUnitX, -halfDistance * ctUnitY, ctPerpX, ctPerpY, 10, "#0aa", "#06a", 1.0, "dashed");
+  }
+
+  if (scale > 0.7) {
+    const smallMarksPerSide = secondsPerSide * 10;
+    for(let tenth = 1; tenth <= smallMarksPerSide; tenth++) {
+      if (tenth % 5 === 0) continue;
+      const distance = tenth * smallSpacing;
+      drawPoint(distance * ctUnitX, distance * ctUnitY, 2, "#099", "#057");
+      drawPoint(-distance * ctUnitX, -distance * ctUnitY, 2, "#099", "#057");
+    }
+  }
+
+  for(let i = -10; i <= 10; i++){
+    const t = i / 10;
+    const px = xX0 + (xX1 - xX0) * (0.5 + t/2);
+    const py = xY0 + (xY1 - xY0) * (0.5 + t/2);
+    drawLine(px, py - extent, px, py + extent, "#888", "#666", 1);
+
+    for(let sec = 1; sec <= secondsPerSide; sec++) {
+      const distance = sec * lineSpacing;
+      drawMark(px, py - distance, 1, 0, 12, "#888", "#666", 1.5);
+      if (scale > 0.5) drawText(sec.toString(), px - 8, py - distance, "#888", "#666", 10, "right");
+
+      drawMark(px, py + distance, 1, 0, 12, "#888", "#666", 1.5);
+      if (scale > 0.5) drawText((-sec).toString(), px + 8, py + distance, "#888", "#666", 10, "left");
+
+      const halfDistance = distance - halfSpacing;
+      drawMark(px, py - halfDistance, 1, 0, 9, "#888", "#666", 1.0, "dashed");
+      drawMark(px, py + halfDistance, 1, 0, 9, "#888", "#666", 1.0, "dashed");
+    }
+
+    if (scale > 0.7) {
+      for(let tenth = 1; tenth <= secondsPerSide * 10; tenth++) {
+        if (tenth % 5 === 0) continue;
+        const distance = tenth * smallSpacing;
+        drawPoint(px, py - distance, 1.5, "#888", "#666");
+        drawPoint(px, py + distance, 1.5, "#888", "#666");
+      }
+    }
+
+    if (scale > 0.7 && i !== 0) drawText(i.toString(), px, py + 20, "#888", "#666", 10);
+  }
+
+  drawPoint(0, 0, 2, "#fff", "#fff");
+}
+
+// === МИНКОВСКИЙ (M) ===
+function drawMinkowskiDiagram() {
+  const extent = lineSpacing * 10;
+  drawLine(-extent, 0, extent, 0, "#0ff", "#08f", 0.8);
+  drawLine(0, -extent, 0, extent, "#0ff", "#08f", 0.8);
+  drawDashedLine(-extent, -extent, extent, extent, "#ff0", "#880", 0.6, [4, 4]);
+  drawDashedLine(-extent, extent, extent, -extent, "#ff0", "#880", 0.6, [4, 4]);
+
+  const gridStep = lineSpacing;
+  for (let i = -Math.floor(extent/gridStep); i <= Math.floor(extent/gridStep); i++) {
+    if (i === 0) continue;
+    const x = i * gridStep;
+    drawDashedLine(x, -extent, x, extent, "#044", "#06a", 0.4, [3, 5]);
+    drawDashedLine(-extent, x, extent, x, "#044", "#06a", 0.4, [3, 5]);
+  }
+
+  const beta = Math.sin(angle);
+  const visBetaLimit = 0.999;
+  let visBeta = beta;
+  const absBeta = Math.abs(beta);
+  if (absBeta > 0.707) {
+    const t = (absBeta - 0.707) / (0.999 - 0.707);
+    const limitedBeta = 0.707 + (visBetaLimit - 0.707) * t;
+    visBeta = Math.min(absBeta, limitedBeta) * Math.sign(beta);
+  }
+
+  const visGamma = 1 / Math.sqrt(1 - visBeta * visBeta);
+  const maxGamma = 50;
+  const drawGamma = Math.min(visGamma, maxGamma);
+  const drawBeta = Math.sqrt(1 - 1/(drawGamma * drawGamma)) * Math.sign(visBeta);
+
+  const drawCtPrimeX = drawBeta * drawGamma;
+  const drawCtPrimeY = drawGamma;
+  const drawXPrimeX = drawGamma;
+  const drawXPrimeY = drawBeta * drawGamma;
+
+  drawLine(-drawCtPrimeX * extent, -drawCtPrimeY * extent, drawCtPrimeX * extent, drawCtPrimeY * extent, "#888", "#666", 1.5);
+  drawLine(-drawXPrimeX * extent, -drawXPrimeY * extent, drawXPrimeX * extent, drawXPrimeY * extent, "#888", "#666", 1.5);
+
+  for (let i = -Math.floor(extent/gridStep); i <= Math.floor(extent/gridStep); i++) {
+    const offset = i * gridStep;
+
+    const x1 = -drawXPrimeX * extent + drawCtPrimeX * offset;
+    const y1 = -drawXPrimeY * extent + drawCtPrimeY * offset;
+    const x2 =  drawXPrimeX * extent + drawCtPrimeX * offset;
+    const y2 =  drawXPrimeY * extent + drawCtPrimeY * offset;
+
+    const p1 = toScreen(x1, y1);
+    const p2 = toScreen(x2, y2);
+
+    ctx.strokeStyle = "#888";
+    ctx.lineWidth = 0.7;
+    const slope = Math.abs((y2 - y1) / (x2 - x1));
+    const angleDiff = Math.abs(Math.atan(slope) - Math.PI/4);
+    if (angleDiff < 0.05 && Math.abs(visBeta) > 0.7) ctx.setLineDash([2, 4]);
+    else ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    const x3 = -drawCtPrimeX * extent + drawXPrimeX * offset;
+    const y3 = -drawCtPrimeY * extent + drawXPrimeY * offset;
+    const x4 =  drawCtPrimeX * extent + drawXPrimeX * offset;
+    const y4 =  drawCtPrimeY * extent + drawXPrimeY * offset;
+
+    const p3 = toScreen(x3, y3);
+    const p4 = toScreen(x4, y4);
+
+    ctx.strokeStyle = "#888";
+    ctx.lineWidth = 0.7;
+    const slope2 = Math.abs((y4 - y3) / (x4 - x3));
+    const angleDiff2 = Math.abs(Math.atan(slope2) - Math.PI/4);
+    if (angleDiff2 < 0.05 && Math.abs(visBeta) > 0.7) ctx.setLineDash([2, 4]);
+    else ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(p3.x, p3.y);
+    ctx.lineTo(p4.x, p4.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  drawPoint(0, 0, 2, "#fff", "#fff");
+}
+
+// === PENROSE (P) — Minkowski 1+1 ===
+function penroseFromUV(u, v, extent) {
+  const U = Math.atan(u);
+  const V = Math.atan(v);
+  const T = (U + V) / 2;
+  const X = (V - U) / 2;
+  const s = extent / (Math.PI / 2);
+  return { x: X * s, y: T * s };
+}
+function penroseFromTX(t, x, extent) {
+  return penroseFromUV(t - x, t + x, extent);
+}
+function penroseFromPrimedTX(tP, xP, extent, eta) {
+  const uP = tP - xP;
+  const vP = tP + xP;
+  const expEta = Math.exp(eta);
+  const u = expEta * uP;
+  const v = (1 / expEta) * vP;
+  return penroseFromUV(u, v, extent);
+}
+function rapidityFromBeta(beta) {
+  const b = Math.max(-0.999999999999, Math.min(0.999999999999, beta));
+  return 0.5 * Math.log((1 + b) / (1 - b));
+}
+
+function drawPenroseDiagram() {
+  const extent = lineSpacing * 8;
+  const L = extent * 0.98;
+
+  drawLine(0, -L,  L, 0, "#ff0", "#880", 1.2);
+  drawLine( L, 0,  0, L, "#ff0", "#880", 1.2);
+  drawLine(0,  L, -L, 0, "#ff0", "#880", 1.2);
+  drawLine(-L, 0,  0,-L, "#ff0", "#880", 1.2);
+
+  drawLine(-L, 0, L, 0, "#0ff", "#08f", 0.9);
+  drawLine(0, -L, 0, L, "#0ff", "#08f", 0.9);
+
+  drawDashedLine(0, 0,  L/2,  L/2, "#ff0", "#880", 0.8, [6,4]);
+  drawDashedLine(0, 0, -L/2,  L/2, "#ff0", "#880", 0.8, [6,4]);
+  drawDashedLine(0, 0,  L/2, -L/2, "#ff0", "#880", 0.8, [6,4]);
+  drawDashedLine(0, 0, -L/2, -L/2, "#ff0", "#880", 0.8, [6,4]);
+
+  drawText("t", 0,  L*1.06, "#0ff", "#0ff", 11);
+  drawText("x", L*1.06, 0, "#0ff", "#0ff", 11);
+
+  drawText("i⁺",  0,  L*0.93, "#fff", "#fff", 11);
+  drawText("i⁻",  0, -L*0.93, "#fff", "#fff", 11);
+  drawText("i⁰",  L*0.92, 0, "#fff", "#fff", 11);
+  drawText("i⁰", -L*0.92, 0, "#fff", "#fff", 11);
+
+  drawText("𝓘⁺",  L*0.62,  L*0.32, "#fff", "#fff", 11);
+  drawText("𝓘⁺", -L*0.62,  L*0.32, "#fff", "#fff", 11);
+  drawText("𝓘⁻",  L*0.62, -L*0.32, "#fff", "#fff", 11);
+  drawText("𝓘⁻", -L*0.62, -L*0.32, "#fff", "#fff", 11);
+
+  const gridStep = lineSpacing;
+  const maxTX = lineSpacing * 12;
+  const samples = 90;
+
+  for (let ti = -Math.floor(maxTX / gridStep); ti <= Math.floor(maxTX / gridStep); ti++) {
+    const t0 = ti * gridStep;
+    if (Math.abs(t0) < 1e-9) continue;
+    const pts = [];
+    for (let k = 0; k <= samples; k++) {
+      const x = -maxTX + 2 * maxTX * (k / samples);
+      const p = penroseFromTX(t0, x, extent);
+      if (Math.abs(p.x) + Math.abs(p.y) <= L * 1.01) pts.push(p);
+    }
+    drawCurve(pts, "#044", 0.7, [3,4]);
+  }
+
+  for (let xi = -Math.floor(maxTX / gridStep); xi <= Math.floor(maxTX / gridStep); xi++) {
+    const x0 = xi * gridStep;
+    if (Math.abs(x0) < 1e-9) continue;
+    const pts = [];
+    for (let k = 0; k <= samples; k++) {
+      const t = -maxTX + 2 * maxTX * (k / samples);
+      const p = penroseFromTX(t, x0, extent);
+      if (Math.abs(p.x) + Math.abs(p.y) <= L * 1.01) pts.push(p);
+    }
+    drawCurve(pts, "#044", 0.7, [3,4]);
+  }
+
+  const beta = Math.sin(angle);
+  const absBeta = Math.abs(beta);
+  const eta = rapidityFromBeta(beta);
+
+  if (absBeta > 1e-4) {
+    ctx.save();
+    ctx.globalAlpha = 0.95;
+
+    for (let ti = -Math.floor(maxTX / gridStep); ti <= Math.floor(maxTX / gridStep); ti++) {
+      const tP = ti * gridStep;
+      if (Math.abs(tP) < 1e-9) continue;
+      const pts = [];
+      for (let k = 0; k <= samples; k++) {
+        const xP = -maxTX + 2 * maxTX * (k / samples);
+        const p = penroseFromPrimedTX(tP, xP, extent, eta);
+        if (Math.abs(p.x) + Math.abs(p.y) <= L * 1.01) pts.push(p);
+      }
+      drawCurve(pts, "#666", 0.65, [5,5]);
+    }
+
+    for (let xi = -Math.floor(maxTX / gridStep); xi <= Math.floor(maxTX / gridStep); xi++) {
+      const xP = xi * gridStep;
+      if (Math.abs(xP) < 1e-9) continue;
+      const pts = [];
+      for (let k = 0; k <= samples; k++) {
+        const tP = -maxTX + 2 * maxTX * (k / samples);
+        const p = penroseFromPrimedTX(0, xP, extent, eta);
+        if (Math.abs(p.x) + Math.abs(p.y) <= L * 1.01) pts.push(p);
+      }
+      drawCurve(pts, "#666", 0.65, [5,5]);
+    }
+
+    {
+      const ptsT = [];
+      for (let k = 0; k <= samples; k++) {
+        const tP = -maxTX + 2 * maxTX * (k / samples);
+        const p = penroseFromPrimedTX(tP, 0, extent, eta);
+        if (Math.abs(p.x) + Math.abs(p.y) <= L * 1.01) ptsT.push(p);
+      }
+      drawCurve(ptsT, "#aaa", 1.6);
+    }
+    {
+      const ptsX = [];
+      for (let k = 0; k <= samples; k++) {
+        const xP = -maxTX + 2 * maxTX * (k / samples);
+        const p = penroseFromPrimedTX(0, xP, extent, eta);
+        if (Math.abs(p.x) + Math.abs(p.y) <= L * 1.01) ptsX.push(p);
+      }
+      drawCurve(ptsX, "#aaa", 1.6);
+    }
+
+    ctx.restore();
+  }
+
+  {
+    const pts = [];
+    for (let k = 0; k <= samples; k++) {
+      const t = -maxTX + 2 * maxTX * (k / samples);
+      const p = penroseFromTX(t, 0, extent);
+      if (Math.abs(p.x) + Math.abs(p.y) <= L * 1.01) pts.push(p);
+    }
+    drawCurve(pts, "#0f0", 1.2);
+  }
+
+  drawPoint(0, 0, 2, "#fff", "#fff");
+  drawText("Penrose (Minkowski 1+1 compactification)", 0, -L*1.08, "#0ff", "#0ff", 11);
+}
+
+// === D (ДИСК) ===
+function drawDiskCustom() {
+  const R = getDiskRadius();
+  const cx = 0, cy = 0;
+
+  const W_CIRCLE = 1.4;
+  const W_MAIN   = 1.4;
+  const W_HYP    = 0.8;
+
+  const c = toScreen(cx, cy);
+  ctx.strokeStyle = "#ff0";
+  ctx.lineWidth = W_CIRCLE;
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.arc(c.x, c.y, R * scale, 0, 2*Math.PI);
+  ctx.stroke();
+
+  drawPoint(0, 0, 2, "#fff", "#fff");
+
+  const sx = diskSourceX;
+  const sy = diskSourceY;
+  drawPoint(sx, sy, 4, "#ff0", "#ff0");
+
+  const radV = Math.max(0, R*R - sx*sx);
+  const yTop = -Math.sqrt(radV);
+  drawLine(sx, sy, sx, yTop, "#0ff", "#0ff", W_MAIN);
+
+  drawLine(0, 0, sx, yTop, "#888", "#888", W_HYP);
+
+  const radH = Math.max(0, R*R - sy*sy);
+  const xRight = Math.sqrt(radH);
+  const xLeft  = -xRight;
+
+  drawLine(sx, sy, xRight, sy, "#08f", "#08f", W_MAIN);
+  drawLine(sx, sy, xLeft,  sy, "#f00", "#f00", W_MAIN);
+}
+
+// ============================
+// INPUT: touch + pointer + wheel
+// ============================
+
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+
+  // --- MODE A: Mercedes ---
+  if (mode === 'A') {
+    if (e.touches.length === 2) {
+      const rect = canvas.getBoundingClientRect();
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+
+      touchStartDistance = getTouchDistance(e.touches);
+
+      touchStartCenterX = (t1.clientX + t2.clientX) / 2 - rect.left;
+      touchStartCenterY = (t1.clientY + t2.clientY) / 2 - rect.top;
+
+      touchStartScale = scale;
+      touchStartOffsetX = offsetX;
+      touchStartOffsetY = offsetY;
+
+      touchStartWorldX = (touchStartCenterX - touchStartOffsetX) / touchStartScale;
+      touchStartWorldY = (touchStartCenterY - touchStartOffsetY) / touchStartScale;
+
+      draggingAngle = false;
+      draggingSource = false;
+      return;
+    }
+
+    if (e.touches.length === 1) {
+      const t = e.touches[0];
+      draggingAngle = false;
+      draggingSource = false;
+      mercedesA.onDown(t.clientX, t.clientY);
+      return;
+    }
+  }
+  // --- /MODE A ---
+
+  if (e.touches.length === 2) {
+    const rect = canvas.getBoundingClientRect();
+    const touch1 = e.touches[0];
+    const touch2 = e.touches[1];
+
+    touchStartDistance = getTouchDistance(e.touches);
+    touchStartAngle = getTouchAngle(e.touches);
+
+    touchStartCenterX = (touch1.clientX + touch2.clientX) / 2 - rect.left;
+    touchStartCenterY = (touch1.clientY + touch2.clientY) / 2 - rect.top;
+
+    touchStartScale = scale;
+    touchStartAngleSystem = angle;
+
+    touchStartOffsetX = offsetX;
+    touchStartOffsetY = offsetY;
+
+    touchStartWorldX = (touchStartCenterX - touchStartOffsetX) / touchStartScale;
+    touchStartWorldY = (touchStartCenterY - touchStartOffsetY) / touchStartScale;
+
+    draggingAngle = false;
+    draggingSource = false;
+  } else if (e.touches.length === 1) {
+    const t = e.touches[0];
+    if (mode === 'D') {
+      draggingSource = true;
+      draggingAngle = false;
+      moveDiskSourceToClientX(t.clientX);
+    } else {
+      draggingAngle = true;
+      draggingSource = false;
+      lastX = t.clientX;
+    }
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+
+  // --- MODE A: Mercedes ---
+  if (mode === 'A') {
+    if (e.touches.length === 2 && touchStartDistance !== null && touchStartDistance > 0) {
+      const rect = canvas.getBoundingClientRect();
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+
+      const currentDistance = getTouchDistance(e.touches);
+      const currentCenterX = (t1.clientX + t2.clientX) / 2 - rect.left;
+      const currentCenterY = (t1.clientY + t2.clientY) / 2 - rect.top;
+
+      const zoomFactor = currentDistance / touchStartDistance;
+      const newScale = Math.max(0.1, Math.min(5, touchStartScale * zoomFactor));
+
+      scale = newScale;
+      offsetX = currentCenterX - touchStartWorldX * newScale;
+      offsetY = currentCenterY - touchStartWorldY * newScale;
+      return;
+    }
+
+    if (e.touches.length === 1) {
+      const t = e.touches[0];
+      mercedesA.onMove(t.clientX, t.clientY);
+      return;
+    }
+  }
+  // --- /MODE A ---
+
+  if (e.touches.length === 2 && touchStartDistance !== null && touchStartDistance > 0) {
+    const rect = canvas.getBoundingClientRect();
+    const touch1 = e.touches[0];
+    const touch2 = e.touches[1];
+
+    const currentDistance = getTouchDistance(e.touches);
+    const currentAngle = getTouchAngle(e.touches);
+
+    const currentCenterX = (touch1.clientX + touch2.clientX) / 2 - rect.left;
+    const currentCenterY = (touch1.clientY + touch2.clientY) / 2 - rect.top;
+
+    const zoomFactor = currentDistance / touchStartDistance;
+    const newScale = Math.max(0.1, Math.min(5, touchStartScale * zoomFactor));
+
+    const angleDelta = currentAngle - touchStartAngle;
+    let newAngle = touchStartAngleSystem - angleDelta * 0.8;
+    newAngle = Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, newAngle));
+
+    const newOffsetX = currentCenterX - touchStartWorldX * newScale;
+    const newOffsetY = currentCenterY - touchStartWorldY * newScale;
+
+    scale = newScale;
+    angle = newAngle;
+    offsetX = newOffsetX;
+    offsetY = newOffsetY;
+
+    updateInfo();
+  } else if (e.touches.length === 1) {
+    const t = e.touches[0];
+    if (draggingSource && mode === 'D') {
+      moveDiskSourceToClientX(t.clientX);
+    } else if (draggingAngle) {
+      const dx = t.clientX - lastX;
+      angle += dx * 0.01;
+      angle = Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, angle));
+      lastX = t.clientX;
+      updateInfo();
+    }
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchend', (e) => {
+  // --- MODE A: Mercedes ---
+  if (mode === 'A') {
+    mercedesA.onUp();
+    if (e.touches.length < 2) {
+      touchStartDistance = null;
+      touchStartAngle = null;
+    }
+    return;
+  }
+  // --- /MODE A ---
+
+  draggingAngle = false;
+  draggingSource = false;
+  if (e.touches.length < 2) {
+    touchStartDistance = null;
+    touchStartAngle = null;
+  }
+});
+
+canvas.addEventListener("pointerdown", e => {
+  if (mode === 'A') {
+    if (e.pointerType === 'touch') return;
+    mercedesA.onDown(e.clientX, e.clientY);
+    return;
+  }
+
+  if (mode === 'D') {
+    draggingSource = true;
+    draggingAngle = false;
+    moveDiskSourceToClientX(e.clientX);
+  } else {
+    draggingAngle = true;
+    draggingSource = false;
+    lastX = e.clientX;
+  }
+});
+canvas.addEventListener("pointermove", e => {
+  if (mode === 'A') {
+    if (e.pointerType === 'touch') return;
+    mercedesA.onMove(e.clientX, e.clientY);
+    return;
+  }
+
+  if (draggingSource && mode === 'D') {
+    moveDiskSourceToClientX(e.clientX);
+  } else if (draggingAngle) {
+    const dx = e.clientX - lastX;
+    angle += dx * 0.01;
+    angle = Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, angle));
+    lastX = e.clientX;
+    updateInfo();
+  }
+});
+canvas.addEventListener("pointerup", () => {
+  if (mode === 'A') { mercedesA.onUp(); return; }
+  draggingAngle = false;
+  draggingSource = false;
+});
+canvas.addEventListener("pointerleave", () => {
+  if (mode === 'A') { mercedesA.onUp(); return; }
+  draggingAngle = false;
+  draggingSource = false;
+});
+
+canvas.addEventListener("wheel", e => {
+  e.preventDefault();
+  const zoomFactor = 1.1;
+  const rect = canvas.getBoundingClientRect();
+  const mouseX = e.clientX - rect.left;
+  const mouseY = e.clientY - rect.top;
+  const worldX = (mouseX - offsetX) / scale;
+  const worldY = (mouseY - offsetY) / scale;
+  if (e.deltaY < 0) scale *= zoomFactor;
+  else scale /= zoomFactor;
+
+  scale = Math.max(0.1, Math.min(5, scale));
+  offsetX = mouseX - worldX * scale;
+  offsetY = mouseY - worldY * scale;
+});
+
+// === ГЛАВНЫЙ ЦИКЛ ===
+function animate() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  if (mode === 'E') {
+    drawOriginalDiagram();
+  } else if (mode === 'M') {
+    drawMinkowskiDiagram();
+  } else if (mode === 'P') {
+    drawPenroseDiagram();
+  } else if (mode === 'D') {
+    drawDiskCustom();
+  } else if (mode === 'A') {
+    mercedesA.draw();
+  }
+
+  requestAnimationFrame(animate);
+}
+
+updateInfo();
+setMode(mode);
+animate();
+</script>
+</body>
+</html>
